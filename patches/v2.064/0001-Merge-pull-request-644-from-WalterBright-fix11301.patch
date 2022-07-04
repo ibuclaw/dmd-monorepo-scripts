@@ -1,0 +1,42 @@
+From 2abb4b0e1c73bcf0ec7347c27ea945f90252c337 Mon Sep 17 00:00:00 2001
+From: David Nadlinger <code@klickverbot.at>
+Date: Sun, 27 Oct 2013 03:05:29 -0700
+Subject: [PATCH 1/5] Merge pull request #644 from WalterBright/fix11301
+
+fix Issue 11301 - [2.064 beta] core.sys.linux.sys.mman triggers enum res...
+---
+ src/core/sys/linux/sys/mman.d | 14 ++++++++++++--
+ 1 file changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/sys/linux/sys/mman.d b/src/core/sys/linux/sys/mman.d
+index c8298339..9f0c87df 100644
+--- a/src/core/sys/linux/sys/mman.d
++++ b/src/core/sys/linux/sys/mman.d
+@@ -649,12 +649,22 @@ else
+     static if (__USE_MISC) enum
+     {
+         MAP_FILE = 0,
+-        MAP_ANONYMOUS = __MAP_ANONYMOUS,
+-        MAP_ANON = MAP_ANONYMOUS,
++        //MAP_ANONYMOUS = __MAP_ANONYMOUS,
++        //MAP_ANON = MAP_ANONYMOUS,
+         MAP_HUGE_SHIFT = 26,
+         MAP_HUGE_MASK = 0x3f,
+     }
+ 
++    /* This should be behind the static if (__USE_MISC), but it runs into
++     * trouble with the alias declaration for MAP_ANON in core.sys.posix.sys.mman
++     * due to forward reference problems. See Bugzilla 11301 for a fuller explanation.
++     */
++    enum
++    {
++        MAP_ANONYMOUS = __MAP_ANONYMOUS,
++        MAP_ANON = MAP_ANONYMOUS,
++    }
++
+     // in core.sys.posix.sys.mman
+     // enum
+     // {
+-- 
+2.34.1
+

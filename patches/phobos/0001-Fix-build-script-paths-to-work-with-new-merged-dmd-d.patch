@@ -1,0 +1,85 @@
+From f409c7f9f3435e923ea5103ca808799b61514ff7 Mon Sep 17 00:00:00 2001
+From: Iain Buclaw <ibuclaw@gdcproject.org>
+Date: Sun, 3 Jul 2022 18:22:06 +0200
+Subject: [PATCH] Fix build script paths to work with new merged dmd-druntime
+ repository
+
+---
+ posix.mak | 10 +++++-----
+ win32.mak |  2 +-
+ win64.mak |  2 +-
+ 3 files changed, 7 insertions(+), 7 deletions(-)
+
+diff --git a/posix.mak b/posix.mak
+index 023e810b2..aa2b729e9 100644
+--- a/posix.mak
++++ b/posix.mak
+@@ -34,7 +34,7 @@ DEBUGGER=gdb
+ GIT_HOME=https://github.com/dlang
+ DMD_DIR=../dmd
+ 
+-include $(DMD_DIR)/src/osmodel.mak
++include $(DMD_DIR)/compiler/src/osmodel.mak
+ 
+ ifeq (osx,$(OS))
+ 	export MACOSX_DEPLOYMENT_TARGET=10.9
+@@ -67,7 +67,7 @@ endif
+ 
+ # Configurable stuff that's rarely edited
+ INSTALL_DIR = ../install
+-DRUNTIME_PATH = ../druntime
++DRUNTIME_PATH = ../dmd/druntime
+ DLANG_ORG_DIR = ../dlang.org
+ ZIPFILE = phobos.zip
+ ROOT_OF_THEM_ALL = generated
+@@ -82,10 +82,10 @@ ifneq (,$(DRUNTIME))
+ 	CUSTOM_DRUNTIME=1
+ endif
+ ifeq (,$(findstring win,$(OS)))
+-	DRUNTIME = $(DRUNTIME_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)/libdruntime.a
++	DRUNTIME = $(DRUNTIME_PATH)/../generated/$(OS)/$(BUILD)/$(MODEL)/libdruntime.a
+ 	DRUNTIMESO = $(basename $(DRUNTIME)).so.a
+ else
+-	DRUNTIME = $(DRUNTIME_PATH)/lib/druntime.lib
++	DRUNTIME = $(DRUNTIME_PATH)/../lib/druntime.lib
+ endif
+ 
+ # Set CC and DMD
+@@ -485,7 +485,7 @@ else
+ # to always invoke druntime's make. Use FORCE instead of .PHONY to
+ # avoid rebuilding phobos when $(DRUNTIME) didn't change.
+ $(DRUNTIME): FORCE
+-	$(MAKE) -C $(DRUNTIME_PATH) -f posix.mak MODEL=$(MODEL) DMD=$(DMD) OS=$(OS) BUILD=$(BUILD)
++	$(MAKE) -C $(DRUNTIME_PATH) -f posix.mak MODEL=$(MODEL) DMD=$(abspath $(DMD)) OS=$(OS) BUILD=$(BUILD)
+ 
+ ifeq (,$(findstring win,$(OS)))
+ $(DRUNTIMESO): $(DRUNTIME)
+diff --git a/win32.mak b/win32.mak
+index e3840e60a..d4f384395 100644
+--- a/win32.mak
++++ b/win32.mak
+@@ -38,7 +38,7 @@ CFLAGS=-mn -6 -r
+ 
+ ## Location of druntime tree
+ 
+-DRUNTIME=../druntime
++DRUNTIME=../dmd/druntime
+ DRUNTIMELIB=$(DRUNTIME)/lib/druntime.lib
+ 
+ ## Flags for dmd D compiler
+diff --git a/win64.mak b/win64.mak
+index 34633d055..983ec325c 100644
+--- a/win64.mak
++++ b/win64.mak
+@@ -35,7 +35,7 @@ CFLAGS=/O2 /nologo
+ 
+ ## Location of druntime tree
+ 
+-DRUNTIME=../druntime
++DRUNTIME=../dmd/druntime
+ DRUNTIMELIB=$(DRUNTIME)/lib/druntime$(MODEL).lib
+ 
+ ## Flags for dmd D compiler
+-- 
+2.34.1
+

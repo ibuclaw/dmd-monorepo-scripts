@@ -1,0 +1,779 @@
+From 7c396ef4080737928e68bdb2550e403b87fe379f Mon Sep 17 00:00:00 2001
+From: Walter Bright <walter@walterbright.com>
+Date: Wed, 30 Oct 2013 00:13:07 -0700
+Subject: [PATCH 3/5] Merge pull request #649 from dawgfoto/fix11378
+
+fix Issue 11378 - implicit runtime initialization/finalization is broken
+---
+ posix.mak                         |  10 +-
+ src/core/runtime.d                |  53 +++++----
+ src/rt/dmain2.d                   | 182 +++++++++---------------------
+ src/rt/sections_linux.d           |  57 ++++++----
+ test/init_fini/Makefile           |  31 +++++
+ test/init_fini/src/runtime_args.d |  13 +++
+ test/init_fini/src/thread_join.d  |  18 +++
+ test/shared/Makefile              |   1 +
+ test/shared/src/host.c            |  12 ++
+ test/shared/src/lib.d             |  13 +++
+ test/shared/src/linkD.c           |   7 +-
+ test/shared/src/linkDR.c          |   4 +
+ test/shared/src/loadDR.c          |  10 +-
+ test/shared/src/plugin.d          |  13 +++
+ 14 files changed, 241 insertions(+), 183 deletions(-)
+ create mode 100644 test/init_fini/Makefile
+ create mode 100644 test/init_fini/src/runtime_args.d
+ create mode 100644 test/init_fini/src/thread_join.d
+
+diff --git a/posix.mak b/posix.mak
+index 9bed0757..064c1571 100644
+--- a/posix.mak
++++ b/posix.mak
+@@ -169,7 +169,7 @@ $(DRUNTIME): $(OBJS) $(SRCS)
+ 	$(DMD) -lib -of$(DRUNTIME) -Xfdruntime.json $(DFLAGS) $(SRCS) $(OBJS)
+ 
+ UT_MODULES:=$(patsubst src/%.d,$(OBJDIR)/%,$(SRCS))
+-ADDITIONAL_TESTS:=
++ADDITIONAL_TESTS:=test/init_fini
+ ADDITIONAL_TESTS+=$(if $(findstring $(OS),linux),test/shared,)
+ 
+ unittest : $(UT_MODULES) $(addsuffix /.run,$(ADDITIONAL_TESTS))
+@@ -215,8 +215,12 @@ $(OBJDIR)/% : $(OBJDIR)/test_runner
+ # succeeded, render the file new again
+ 	@touch $@
+ 
+-test/%/.run: test/%/Makefile $(DRUNTIMESO)
+-	$(QUIET)$(MAKE) -C test/$* MODEL=$(MODEL) OS=$(OS) DMD=$(abspath $(DMD)) DRUNTIMESO=$(abspath $(DRUNTIMESO)) QUIET=$(QUIET)
++test/init_fini/.run: $(DRUNTIME)
++test/shared/.run: $(DRUNTIMESO)
++
++test/%/.run: test/%/Makefile
++	$(QUIET)$(MAKE) -C test/$* MODEL=$(MODEL) OS=$(OS) DMD=$(abspath $(DMD)) \
++		DRUNTIME=$(abspath $(DRUNTIME)) DRUNTIMESO=$(abspath $(DRUNTIMESO)) QUIET=$(QUIET)
+ 
+ detab:
+ 	detab $(MANIFEST)
+diff --git a/src/core/runtime.d b/src/core/runtime.d
+index 521cbd37..b1a9c791 100644
+--- a/src/core/runtime.d
++++ b/src/core/runtime.d
+@@ -24,6 +24,11 @@ version (Windows) extern (C) void* rt_loadLibraryW(const wchar_t* name);
+ /// C interface for Runtime.unloadLibrary, returns 1/0 instead of bool
+ extern (C) int rt_unloadLibrary(void* ptr);
+ 
++/// C interface for Runtime.initialize, returns 1/0 instead of bool
++extern(C) int rt_init();
++/// C interface for Runtime.terminate, returns 1/0 instead of bool
++extern(C) int rt_term();
++
+ private
+ {
+     alias bool function() ModuleUnitTester;
+@@ -37,8 +42,6 @@ private
+     extern (C) TraceHandler rt_getTraceHandler();
+ 
+     alias void delegate( Throwable ) ExceptionHandler;
+-    extern (C) bool rt_init( ExceptionHandler dg = null );
+-    extern (C) bool rt_term( ExceptionHandler dg = null );
+ 
+     extern (C) void* thread_stackBottom();
+ 
+@@ -101,40 +104,42 @@ struct Runtime
+      * Initializes the runtime.  This call is to be used in instances where the
+      * standard program initialization process is not executed.  This is most
+      * often in shared libraries or in libraries linked to a C program.
+-     *
+-     * Params:
+-     *  dg = A delegate which will receive any exception thrown during the
+-     *       initialization process or null if such exceptions should be
+-     *       discarded.
++     * If the runtime was already successfully initialized this returns true.
++     * Each call to initialize must be paired by a call to $(LREF, terminate).
+      *
+      * Returns:
+-     *  true if initialization succeeds and false if initialization fails.
++     *  true if initialization succeeded or false if initialization failed.
+      */
+-    static bool initialize( ExceptionHandler dg = null )
++    static bool initialize()
++    {
++        return !!rt_init();
++    }
++
++    deprecated("Please use the overload of Runtime.initialize that takes no argument.")
++    static bool initialize(ExceptionHandler dg = null)
+     {
+-        return rt_init( dg );
++        return !!rt_init();
+     }
+ 
+ 
+     /**
+-     * Terminates the runtime. This call is to be used in instances
+-     * where the standard program termination process will not be not
+-     * executed. This is most often in shared libraries or in
+-     * libraries linked to a C program. All non-daemon threads must be
+-     * joined or detached prior to calling this function. See also
+-     * $(CXREF thread, thread_joinAll) and $(CXREF thread, thread_detachThis).
+-     *
+-     * Params:
+-     *  dg = A delegate which will receive any exception thrown during the
+-     *       termination process or null if such exceptions should be
+-     *       discarded.
++     * Terminates the runtime.  This call is to be used in instances where the
++     * standard program termination process will not be not executed.  This is
++     * most often in shared libraries or in libraries linked to a C program.
++     * If the runtime was not successfully initialized the function returns false.
+      *
+      * Returns:
+-     *  true if termination succeeds and false if termination fails.
++     *  true if termination succeeded or false if termination failed.
+      */
+-    static bool terminate( ExceptionHandler dg = null )
++    static bool terminate()
++    {
++        return !!rt_term();
++    }
++
++    deprecated("Please use the overload of Runtime.terminate that takes no argument.")
++    static bool terminate(ExceptionHandler dg = null)
+     {
+-        return rt_term( dg );
++        return !!rt_term();
+     }
+ 
+ 
+diff --git a/src/rt/dmain2.d b/src/rt/dmain2.d
+index 3bd0cea9..989e22a2 100644
+--- a/src/rt/dmain2.d
++++ b/src/rt/dmain2.d
+@@ -149,17 +149,25 @@ extern (C) __gshared bool rt_trapExceptions = true;
+ 
+ alias void delegate(Throwable) ExceptionHandler;
+ 
++/**
++ * Keep track of how often rt_init/rt_term were called.
++ */
++shared size_t _initCount;
++
+ /**********************************************
+  * Initialize druntime.
+  * If a C program wishes to call D code, and there's no D main(), then it
+  * must call rt_init() and rt_term().
+- * If it fails, call dg. Except that what dg might be
+- * able to do is undetermined, since the state of druntime
+- * will not be known.
+- * This needs rethinking.
+  */
+-extern (C) bool rt_init(ExceptionHandler dg = null)
++extern (C) int rt_init()
+ {
++    /* @@BUG 11380 @@ Need to synchronize rt_init/rt_term calls for
++       version (Shared) druntime, because multiple C threads might
++       initialize different D libraries without knowing about the
++       shared druntime. Also we need to attach any thread that calls
++       rt_init. */
++    if (_initCount++) return 1;
++
+     _STI_monitor_staticctor();
+     _STI_critical_init();
+ 
+@@ -170,68 +178,45 @@ extern (C) bool rt_init(ExceptionHandler dg = null)
+         initStaticDataGC();
+         rt_moduleCtor();
+         rt_moduleTlsCtor();
+-        return true;
++        return 1;
+     }
+-    catch (Throwable e)
++    catch (Throwable t)
+     {
+-        /* Note that if we get here, the runtime is in an unknown state.
+-         * I'm not sure what the point of calling dg is.
+-         */
+-        if (dg)
+-            dg(e);
+-        else
+-            throw e;    // rethrow, don't silently ignore error
+-        /* Rethrow, and the two STD functions aren't called?
+-         * This needs rethinking.
+-         */
++        _initCount = 0;
++        printThrowable(t);
+     }
+     _STD_critical_term();
+     _STD_monitor_staticdtor();
+-    return false;
++    return 0;
+ }
+ 
+ /**********************************************
+  * Terminate use of druntime.
+- * If it fails, call dg. Except that what dg might be
+- * able to do is undetermined, since the state of druntime
+- * will not be known.
+- * This needs rethinking.
+  */
+-extern (C) bool rt_term(ExceptionHandler dg = null)
++extern (C) int rt_term()
+ {
++    if (!_initCount) return 0; // was never initialized
++    if (--_initCount) return 1;
++
+     try
+     {
+-        /* Check that all other non-daemon threads have finished
+-         * execution before calling the shared module destructors.
+-         * Calling thread_joinAll here would be too late because other
+-         * shared libraries might have already been
+-         * destructed/unloaded.
+-         */
+-        import core.thread : Thread;
+-        auto tthis = Thread.getThis();
+-        foreach (t; Thread)
+-        {
+-            if (t !is tthis && t.isRunning && !t.isDaemon)
+-                assert(0, "Can only call rt_term when all non-daemon threads have been joined or detached.");
+-        }
+-
+         rt_moduleTlsDtor();
++        thread_joinAll();
+         rt_moduleDtor();
+         gc_term();
+         finiSections();
+-        return true;
++        return 1;
+     }
+-    catch (Throwable e)
++    catch (Throwable t)
+     {
+-        if (dg)
+-            dg(e);
++        printThrowable(t);
+     }
+     finally
+     {
+         _STD_critical_term();
+         _STD_monitor_staticdtor();
+     }
+-    return false;
++    return 0;
+ }
+ 
+ /***********************************
+@@ -393,75 +378,6 @@ extern (C) int _d_run_main(int argc, char **argv, MainFunc mainFunc)
+ 
+     void tryExec(scope void delegate() dg)
+     {
+-        void printLocLine(Throwable t)
+-        {
+-            if (t.file)
+-            {
+-               console(t.classinfo.name)("@")(t.file)("(")(t.line)(")");
+-            }
+-            else
+-            {
+-                console(t.classinfo.name);
+-            }
+-            console("\n");
+-        }
+-
+-        void printMsgLine(Throwable t)
+-        {
+-            if (t.file)
+-            {
+-               console(t.classinfo.name)("@")(t.file)("(")(t.line)(")");
+-            }
+-            else
+-            {
+-                console(t.classinfo.name);
+-            }
+-            if (t.msg)
+-            {
+-                console(": ")(t.msg);
+-            }
+-            console("\n");
+-        }
+-
+-        void printInfoBlock(Throwable t)
+-        {
+-            if (t.info)
+-            {
+-                console("----------------\n");
+-                foreach (i; t.info)
+-                    console(i)("\n");
+-                console("----------------\n");
+-            }
+-        }
+-
+-        void print(Throwable t)
+-        {
+-            Throwable firstWithBypass = null;
+-
+-            for (; t; t = t.next)
+-            {
+-                printMsgLine(t);
+-                printInfoBlock(t);
+-                auto e = cast(Error) t;
+-                if (e && e.bypassedException)
+-                {
+-                    console("Bypasses ");
+-                    printLocLine(e.bypassedException);
+-                    if (firstWithBypass is null)
+-                        firstWithBypass = t;
+-                }
+-            }
+-            if (firstWithBypass is null)
+-                return;
+-            console("=== Bypassed ===\n");
+-            for (t = firstWithBypass; t; t = t.next)
+-            {
+-                auto e = cast(Error) t;
+-                if (e && e.bypassedException)
+-                    print(e.bypassedException);
+-            }
+-        }
+-
+         if (trapExceptions)
+         {
+             try
+@@ -470,7 +386,7 @@ extern (C) int _d_run_main(int argc, char **argv, MainFunc mainFunc)
+             }
+             catch (Throwable t)
+             {
+-                print(t);
++                printThrowable(t);
+                 result = EXIT_FAILURE;
+             }
+         }
+@@ -488,33 +404,18 @@ extern (C) int _d_run_main(int argc, char **argv, MainFunc mainFunc)
+     //       the user's main function.  If main terminates with an exception,
+     //       the exception is handled and then cleanup begins.  An exception
+     //       thrown during cleanup, however, will abort the cleanup process.
+-    void runMain()
+-    {
+-        if (runModuleUnitTests())
+-            tryExec({ result = mainFunc(args); });
+-        else
+-            result = EXIT_FAILURE;
+-
+-        tryExec({thread_joinAll();});
+-    }
+-
+-    void runMainWithInit()
++    void runAll()
+     {
+         if (rt_init() && runModuleUnitTests())
+             tryExec({ result = mainFunc(args); });
+         else
+             result = EXIT_FAILURE;
+ 
+-        tryExec({thread_joinAll();});
+-
+         if (!rt_term())
+             result = (result == EXIT_SUCCESS) ? EXIT_FAILURE : result;
+     }
+ 
+-    version (linux) // initialization is done in rt.sections_linux
+-        tryExec(&runMain);
+-    else
+-        tryExec(&runMainWithInit);
++    tryExec(&runAll);
+ 
+     // Issue 10344: flush stdout and return nonzero on failure
+     if (.fflush(.stdout) != 0)
+@@ -528,3 +429,26 @@ extern (C) int _d_run_main(int argc, char **argv, MainFunc mainFunc)
+ 
+     return result;
+ }
++
++private void printThrowable(Throwable t)
++{
++    void sink(const(char)[] buf) nothrow
++    {
++        printf("%.*s", cast(int)buf.length, buf.ptr);
++    }
++
++    for (; t; t = t.next)
++    {
++        t.toString(&sink); sink("\n");
++
++        auto e = cast(Error)t;
++        if (e is null || e.bypassedException is null) continue;
++
++        sink("=== Bypassed ===\n");
++        for (auto t2 = e.bypassedException; t2; t2 = t2.next)
++        {
++            t2.toString(&sink); sink("\n");
++        }
++        sink("=== ~Bypassed ===\n");
++    }
++}
+diff --git a/src/rt/sections_linux.d b/src/rt/sections_linux.d
+index a85abd16..6ef0479c 100644
+--- a/src/rt/sections_linux.d
++++ b/src/rt/sections_linux.d
+@@ -90,13 +90,18 @@ private:
+     }
+ }
+ 
++/****
++ * Boolean flag set to true while the runtime is initialized.
++ */
++__gshared bool _isRuntimeInitialized;
++
++
+ /****
+  * Gets called on program startup just before GC is initialized.
+  */
+ void initSections()
+ {
+-    version (Shared)
+-        !pthread_mutex_init(&_linkMapToDSOMutex, null) || assert(0);
++    _isRuntimeInitialized = true;
+ }
+ 
+ 
+@@ -105,8 +110,7 @@ void initSections()
+  */
+ void finiSections()
+ {
+-    version (Shared)
+-        !pthread_mutex_destroy(&_linkMapToDSOMutex) || assert(0);
++    _isRuntimeInitialized = false;
+ }
+ 
+ alias ScanDG = void delegate(void* pbeg, void* pend);
+@@ -302,9 +306,7 @@ extern(C) void _d_dso_registry(CompilerDSOData* data)
+     // no backlink => register
+     if (*data._slot is null)
+     {
+-        // initialize the runtime when loading the first DSO
+-        if (_loadedDSOs.empty)
+-            initRuntime();
++        if (_loadedDSOs.empty) initLocks(); // first DSO
+ 
+         DSO* pdso = cast(DSO*).calloc(1, DSO.sizeof);
+         assert(typeid(DSO).init().ptr is null);
+@@ -350,9 +352,14 @@ extern(C) void _d_dso_registry(CompilerDSOData* data)
+             _tlsRanges.insertBack(getTLSRange(pdso._tlsMod, pdso._tlsSize));
+         }
+ 
+-        registerGCRanges(pdso);
+-        immutable runTlsCtors = !_rtLoading;
+-        runModuleConstructors(pdso, runTlsCtors);
++        // don't initialize modules before rt_init was called (see Bugzilla 11378)
++        if (_isRuntimeInitialized)
++        {
++            registerGCRanges(pdso);
++            // rt_loadLibrary will run tls ctors, so do this only for dlopen
++            immutable runTlsCtors = !_rtLoading;
++            runModuleConstructors(pdso, runTlsCtors);
++        }
+     }
+     // has backlink => unregister
+     else
+@@ -360,9 +367,14 @@ extern(C) void _d_dso_registry(CompilerDSOData* data)
+         DSO* pdso = cast(DSO*)*data._slot;
+         *data._slot = null;
+ 
+-        immutable runTlsDtors = !_rtLoading;
+-        runModuleDestructors(pdso, runTlsDtors);
+-        unregisterGCRanges(pdso);
++        // don't finalizes modules after rt_term was called (see Bugzilla 11378)
++        if (_isRuntimeInitialized)
++        {
++            // rt_unloadLibrary already ran tls dtors, so do this only for dlclose
++            immutable runTlsDtors = !_rtLoading;
++            runModuleDestructors(pdso, runTlsDtors);
++            unregisterGCRanges(pdso);
++        }
+ 
+         version (Shared)
+         {
+@@ -396,9 +408,7 @@ extern(C) void _d_dso_registry(CompilerDSOData* data)
+ 
+         freeDSO(pdso);
+ 
+-        // terminate the runtime when unloading the last DSO
+-        if (_loadedDSOs.empty)
+-            termRuntime();
++        if (_loadedDSOs.empty) finiLocks(); // last DSO
+     }
+ }
+ 
+@@ -485,19 +495,16 @@ version (Shared)
+ // helper functions
+ ///////////////////////////////////////////////////////////////////////////////
+ 
+-void initRuntime()
++void initLocks()
+ {
+-    if (!rt_init())
+-    {
+-        rt_term();
+-        exit(EXIT_FAILURE);
+-    }
++    version (Shared)
++        !pthread_mutex_init(&_linkMapToDSOMutex, null) || assert(0);
+ }
+ 
+-void termRuntime()
++void finiLocks()
+ {
+-    if (!rt_term())
+-        exit(EXIT_FAILURE);
++    version (Shared)
++        !pthread_mutex_destroy(&_linkMapToDSOMutex) || assert(0);
+ }
+ 
+ void runModuleConstructors(DSO* pdso, bool runTlsCtors)
+diff --git a/test/init_fini/Makefile b/test/init_fini/Makefile
+new file mode 100644
+index 00000000..5733c28a
+--- /dev/null
++++ b/test/init_fini/Makefile
+@@ -0,0 +1,31 @@
++# set from top makefile
++OS:=
++MODEL:=
++DMD:=
++DRUNTIME:=
++DRUNTIMESO:=
++QUIET:=
++
++SRC:=src
++ROOT:=obj/$(OS)/$(MODEL)
++TESTS:=thread_join runtime_args
++
++ifneq (default,$(MODEL))
++	MODEL_FLAG:=-m$(MODEL)
++endif
++CFLAGS:=$(MODEL_FLAG) -Wall
++DFLAGS:=$(MODEL_FLAG) -w -I../../src -I../../import -I$(SRC) -L$(DRUNTIME) -defaultlib= -debuglib=
++
++.PHONY: all clean
++all: $(addprefix $(ROOT)/,$(addsuffix .done,$(TESTS)))
++
++$(ROOT)/%.done: $(ROOT)/%
++	@echo Testing $*
++	$(QUIET)./$(ROOT)/$* $(RUN_ARGS)
++	@touch $@
++
++$(ROOT)/%: $(SRC)/%.d
++	$(QUIET)$(DMD) $(DFLAGS) -of$@ $<
++
++clean:
++	rm -rf obj
+diff --git a/test/init_fini/src/runtime_args.d b/test/init_fini/src/runtime_args.d
+new file mode 100644
+index 00000000..07ebae25
+--- /dev/null
++++ b/test/init_fini/src/runtime_args.d
+@@ -0,0 +1,13 @@
++// Bugzilla 11149 - Runtime.args no longer available in static constructors
++import core.runtime;
++
++shared static this()
++{
++    assert(Runtime.cArgs.argc > 0);
++    assert(Runtime.cArgs.argv !is null);
++    assert(Runtime.args.length > 0);
++}
++
++void main()
++{
++}
+diff --git a/test/init_fini/src/thread_join.d b/test/init_fini/src/thread_join.d
+new file mode 100644
+index 00000000..a40cd5eb
+--- /dev/null
++++ b/test/init_fini/src/thread_join.d
+@@ -0,0 +1,18 @@
++// Bugzilla 11309 - std.concurrency: OwnerTerminated message doesn't work
++// We need to assure that the thread dtors of parent threads run before the thread dtors of the child threads.
++import core.thread, core.sync.semaphore;
++import core.stdc.stdio;
++
++__gshared Semaphore sem;
++
++static ~this()
++{
++    if (sem !is null) sem.notify();
++}
++
++void main()
++{
++    sem = new Semaphore;
++    auto thr = new Thread({assert(sem.wait(1.seconds));});
++    thr.start();
++}
+diff --git a/test/shared/Makefile b/test/shared/Makefile
+index 8430cc9c..c9b2cdf5 100644
+--- a/test/shared/Makefile
++++ b/test/shared/Makefile
+@@ -2,6 +2,7 @@
+ OS:=
+ MODEL:=
+ DMD:=
++DRUNTIME:=
+ DRUNTIMESO:=
+ QUIET:=
+ 
+diff --git a/test/shared/src/host.c b/test/shared/src/host.c
+index 47edf06b..5928d26b 100644
+--- a/test/shared/src/host.c
++++ b/test/shared/src/host.c
+@@ -14,23 +14,35 @@ int main(int argc, char* argv[])
+     name[pathlen + sizeof("plugin1.so") - 5] = '2';
+     void* plugin2 = dlopen(name, RTLD_LAZY);
+ 
++    int (*plugin1_init)() = dlsym(plugin1, "plugin_init");
++    int (*plugin1_term)() = dlsym(plugin1, "plugin_term");
+     int (*runTests1)() = dlsym(plugin1, "runTests");
++    int (*plugin2_init)() = dlsym(plugin2, "plugin_init");
++    int (*plugin2_term)() = dlsym(plugin2, "plugin_term");
+     int (*runTests2)() = dlsym(plugin2, "runTests");
++    assert(plugin1_init());
+     assert(runTests1());
++    assert(plugin2_init());
+     assert(runTests2());
+ 
++    assert(plugin1_term());
+     assert(dlclose(plugin1) == 0);
+     assert(runTests2());
+ 
+     name[pathlen + sizeof("plugin1.so") - 5] = '1';
+     plugin1 = dlopen(name, RTLD_LAZY);
++    plugin1_init = dlsym(plugin1, "plugin_init");
++    plugin1_term = dlsym(plugin1, "plugin_term");
+     runTests1 = dlsym(plugin1, "runTests");
++    assert(plugin1_init());
+     assert(runTests1());
+     assert(runTests2());
+ 
++    assert(plugin2_term());
+     assert(dlclose(plugin2) == 0);
+     assert(runTests1());
+ 
++    assert(plugin1_term());
+     assert(dlclose(plugin1) == 0);
+ 
+     free(name);
+diff --git a/test/shared/src/lib.d b/test/shared/src/lib.d
+index f7cdd3c8..bef27bd7 100644
+--- a/test/shared/src/lib.d
++++ b/test/shared/src/lib.d
+@@ -79,3 +79,16 @@ void runTestsImpl()
+         if (m.name == "lib") passed = true;
+     assert(passed);
+ }
++
++// Provide a way to initialize D from C programs that are D agnostic.
++import core.runtime : rt_init, rt_term;
++
++extern(C) int lib_init()
++{
++    return rt_init();
++}
++
++extern(C) int lib_term()
++{
++    return rt_term();
++}
+diff --git a/test/shared/src/linkD.c b/test/shared/src/linkD.c
+index 6e1faba9..657c9e8f 100644
+--- a/test/shared/src/linkD.c
++++ b/test/shared/src/linkD.c
+@@ -2,8 +2,13 @@
+ #include <assert.h>
+ 
+ extern int runTests(void);
++extern int lib_init(void);
++extern int lib_term(void);
+ 
+ int main(int argc, char* argv[])
+ {
+-    return runTests() ? EXIT_SUCCESS : EXIT_FAILURE;
++    if (!lib_init()) return EXIT_SUCCESS;
++    const int res = runTests() ? EXIT_SUCCESS : EXIT_FAILURE;
++    if (!lib_term()) return EXIT_FAILURE;
++    return res;
+ }
+diff --git a/test/shared/src/linkDR.c b/test/shared/src/linkDR.c
+index d98696c8..924709c1 100644
+--- a/test/shared/src/linkDR.c
++++ b/test/shared/src/linkDR.c
+@@ -5,9 +5,12 @@
+ 
+ extern void* rt_loadLibrary(const char*);
+ extern int rt_unloadLibrary(void*);
++extern int rt_init(void);
++extern int rt_term(void);
+ 
+ int main(int argc, char* argv[])
+ {
++    if (!rt_init()) return EXIT_FAILURE;
+     const size_t pathlen = strrchr(argv[0], '/') - argv[0] + 1;
+     char *name = malloc(pathlen + sizeof("lib.so"));
+     memcpy(name, argv[0], pathlen);
+@@ -20,5 +23,6 @@ int main(int argc, char* argv[])
+     int (*runTests)(void) = dlsym(dlib, "runTests");
+     assert(runTests());
+     assert(rt_unloadLibrary(dlib));
++    if (!rt_term()) return EXIT_FAILURE;
+     return EXIT_SUCCESS;
+ }
+diff --git a/test/shared/src/loadDR.c b/test/shared/src/loadDR.c
+index cdef1bab..08508cbc 100644
+--- a/test/shared/src/loadDR.c
++++ b/test/shared/src/loadDR.c
+@@ -10,9 +10,14 @@ int main(int argc, char* argv[])
+     void *h = dlopen(argv[1], RTLD_LAZY); // load druntime
+     assert(h != NULL);
+ 
++    int (*rt_init)(void) = dlsym(h, "rt_init");
++    int (*rt_term)(void) = dlsym(h, "rt_term");
+     void* (*rt_loadLibrary)(const char*) = dlsym(h, "rt_loadLibrary");
+     int (*rt_unloadLibrary)(void*) = dlsym(h, "rt_unloadLibrary");
+ 
++    int res = EXIT_FAILURE;
++    if (!rt_init()) goto Lexit;
++
+     const size_t pathlen = strrchr(argv[0], '/') - argv[0] + 1;
+     char *name = malloc(pathlen + sizeof("lib.so"));
+     memcpy(name, argv[0], pathlen);
+@@ -26,6 +31,9 @@ int main(int argc, char* argv[])
+     assert(runTests());
+     assert(rt_unloadLibrary(dlib));
+ 
++    if (rt_term()) res = EXIT_SUCCESS;
++
++Lexit:
+     assert(dlclose(h) == 0);
+-    return EXIT_SUCCESS;
++    return res;
+ }
+diff --git a/test/shared/src/plugin.d b/test/shared/src/plugin.d
+index 9320ac4c..d709b26a 100644
+--- a/test/shared/src/plugin.d
++++ b/test/shared/src/plugin.d
+@@ -30,3 +30,16 @@ extern(C) int runTests()
+     }
+     return true;
+ }
++
++// Provide a way to initialize D from C programs that are D agnostic.
++import core.runtime : rt_init, rt_term;
++
++extern(C) int plugin_init()
++{
++    return rt_init();
++}
++
++extern(C) int plugin_term()
++{
++    return rt_term();
++}
+-- 
+2.34.1
+

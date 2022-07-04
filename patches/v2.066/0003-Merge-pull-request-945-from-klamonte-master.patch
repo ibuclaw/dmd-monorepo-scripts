@@ -1,0 +1,68 @@
+From 2fe9887111f34b404707f215f27a99f98e287158 Mon Sep 17 00:00:00 2001
+From: Martin Nowak <code@dawg.eu>
+Date: Tue, 2 Sep 2014 03:24:42 +0200
+Subject: [PATCH 3/3] Merge pull request #945 from klamonte/master
+
+13377 - include core/sys/posix/syslog.d
+---
+ mak/COPY     | 1 +
+ mak/MANIFEST | 1 +
+ win32.mak    | 3 +++
+ win64.mak    | 3 +++
+ 4 files changed, 8 insertions(+)
+
+diff --git a/mak/COPY b/mak/COPY
+index 79329749..c1a99402 100644
+--- a/mak/COPY
++++ b/mak/COPY
+@@ -87,6 +87,7 @@ COPY=\
+ 	$(IMPDIR)\core\sys\posix\signal.d \
+ 	$(IMPDIR)\core\sys\posix\stdio.d \
+ 	$(IMPDIR)\core\sys\posix\stdlib.d \
++	$(IMPDIR)\core\sys\posix\syslog.d \
+ 	$(IMPDIR)\core\sys\posix\termios.d \
+ 	$(IMPDIR)\core\sys\posix\time.d \
+ 	$(IMPDIR)\core\sys\posix\ucontext.d \
+diff --git a/mak/MANIFEST b/mak/MANIFEST
+index c1e1e7f8..ff3e46e0 100644
+--- a/mak/MANIFEST
++++ b/mak/MANIFEST
+@@ -119,6 +119,7 @@ MANIFEST=\
+ 	src\core\sys\posix\signal.d \
+ 	src\core\sys\posix\stdio.d \
+ 	src\core\sys\posix\stdlib.d \
++	src\core\sys\posix\syslog.d \
+ 	src\core\sys\posix\termios.d \
+ 	src\core\sys\posix\time.d \
+ 	src\core\sys\posix\ucontext.d \
+diff --git a/win32.mak b/win32.mak
+index 2f37408f..2e5f3cdf 100644
+--- a/win32.mak
++++ b/win32.mak
+@@ -398,6 +398,9 @@ $(IMPDIR)\core\sys\posix\stdio.d : src\core\sys\posix\stdio.d
+ $(IMPDIR)\core\sys\posix\stdlib.d : src\core\sys\posix\stdlib.d
+ 	copy $** $@
+ 
++$(IMPDIR)\core\sys\posix\syslog.d : src\core\sys\posix\syslog.d
++	copy $** $@
++
+ $(IMPDIR)\core\sys\posix\sys\ioctl.d : src\core\sys\posix\sys\ioctl.d
+ 	copy $** $@
+ 
+diff --git a/win64.mak b/win64.mak
+index 0327a349..b5f9a684 100644
+--- a/win64.mak
++++ b/win64.mak
+@@ -405,6 +405,9 @@ $(IMPDIR)\core\sys\posix\stdio.d : src\core\sys\posix\stdio.d
+ $(IMPDIR)\core\sys\posix\stdlib.d : src\core\sys\posix\stdlib.d
+ 	copy $** $@
+ 
++$(IMPDIR)\core\sys\posix\syslog.d : src\core\sys\posix\syslog.d
++	copy $** $@
++
+ $(IMPDIR)\core\sys\posix\sys\ioctl.d : src\core\sys\posix\sys\ioctl.d
+ 	copy $** $@
+ 
+-- 
+2.34.1
+

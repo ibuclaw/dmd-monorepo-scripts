@@ -1,0 +1,620 @@
+From 84d401c731a7f2347257893eebde0400b8f02935 Mon Sep 17 00:00:00 2001
+From: Iain Buclaw <ibuclaw@gdcproject.org>
+Date: Sun, 3 Jul 2022 17:28:13 +0200
+Subject: [PATCH] Fix build script paths to work with new merged repository
+ structure
+
+---
+ compiler/src/build.d                          | 45 ++++++++++---------
+ compiler/src/posix.mak                        |  2 +-
+ compiler/src/win32.mak                        |  2 +-
+ compiler/src/win64.mak                        |  2 +-
+ compiler/test/Makefile                        | 12 ++---
+ .../test/compilable/extra-files/json2.json    |  2 +-
+ compiler/test/dshell/test_shared.d            |  2 +-
+ compiler/test/dub_package/retrieveScope.d     |  4 +-
+ compiler/test/run.d                           |  2 +-
+ compiler/test/tools/paths.d                   |  5 ++-
+ compiler/test/tools/unit_test_runner.d        |  6 +--
+ compiler/test/unit/support.d                  |  4 +-
+ druntime/posix.mak                            | 12 ++---
+ druntime/win32.mak                            |  4 +-
+ druntime/win64.mak                            |  4 +-
+ posix.mak                                     | 31 ++++++-------
+ win32.mak                                     | 16 +++----
+ win64.mak                                     |  2 +-
+ 18 files changed, 80 insertions(+), 77 deletions(-)
+
+diff --git a/compiler/src/build.d b/compiler/src/build.d
+index ebbe69456..ac9f52d85 100755
+--- a/compiler/src/build.d
++++ b/compiler/src/build.d
+@@ -21,8 +21,9 @@ import std.parallelism : TaskPool, totalCPUs;
+ 
+ const thisBuildScript = __FILE_FULL_PATH__.buildNormalizedPath;
+ const srcDir = thisBuildScript.dirName;
+-const dmdRepo = srcDir.dirName;
+-const testDir = dmdRepo.buildPath("test");
++const compilerDir = srcDir.dirName;
++const dmdRepo = compilerDir.dirName;
++const testDir = compilerDir.buildPath("test");
+ 
+ shared bool verbose; // output verbose logging
+ shared bool force; // always build everything (ignores timestamp checking)
+@@ -292,7 +293,7 @@ alias lexer = makeRuleWithArgs!((MethodInitializer!BuildRule builder, BuildRule
+             extraFlags,
+             // source files need to have relative paths in order for the code coverage
+             // .lst files to be named properly for CodeCov to find them
+-            rule.sources.map!(e => e.relativePath(dmdRepo))
++            rule.sources.map!(e => e.relativePath(compilerDir))
+         ).array
+     )
+ );
+@@ -307,7 +308,7 @@ alias dmdConf = makeRule!((builder, rule) {
+     {
+         enum confFile = "sc.ini";
+         enum conf = `[Environment]
+-DFLAGS="-I%@P%\..\..\..\..\..\druntime\import" "-I%@P%\..\..\..\..\..\phobos"
++DFLAGS="-I%@P%\..\..\..\..\druntime\import" "-I%@P%\..\..\..\..\..\phobos"
+ LIB="%@P%\..\..\..\..\..\phobos"
+ 
+ [Environment32]
+@@ -324,10 +325,10 @@ DFLAGS=%DFLAGS% -L/OPT:NOICF
+     {
+         enum confFile = "dmd.conf";
+         enum conf = `[Environment32]
+-DFLAGS=-I%@P%/../../../../../druntime/import -I%@P%/../../../../../phobos -L-L%@P%/../../../../../phobos/generated/{OS}/{BUILD}/32{exportDynamic} -fPIC
++DFLAGS=-I%@P%/../../../../druntime/import -I%@P%/../../../../../phobos -L-L%@P%/../../../../../phobos/generated/{OS}/{BUILD}/32{exportDynamic} -fPIC
+ 
+ [Environment64]
+-DFLAGS=-I%@P%/../../../../../druntime/import -I%@P%/../../../../../phobos -L-L%@P%/../../../../../phobos/generated/{OS}/{BUILD}/64{exportDynamic} -fPIC
++DFLAGS=-I%@P%/../../../../druntime/import -I%@P%/../../../../../phobos -L-L%@P%/../../../../../phobos/generated/{OS}/{BUILD}/64{exportDynamic} -fPIC
+ `;
+     }
+ 
+@@ -362,7 +363,7 @@ alias common = makeRuleWithArgs!((MethodInitializer!BuildRule builder, BuildRule
+ 
+             // source files need to have relative paths in order for the code coverage
+             // .lst files to be named properly for CodeCov to find them
+-            rule.sources.map!(e => e.relativePath(dmdRepo))
++            rule.sources.map!(e => e.relativePath(compilerDir))
+         ).array)
+ );
+ 
+@@ -398,7 +399,7 @@ alias backend = makeRuleWithArgs!((MethodInitializer!BuildRule builder, BuildRul
+ 
+             // source files need to have relative paths in order for the code coverage
+             // .lst files to be named properly for CodeCov to find them
+-            rule.sources.map!(e => e.relativePath(dmdRepo))
++            rule.sources.map!(e => e.relativePath(compilerDir))
+         ).array)
+ );
+ 
+@@ -467,7 +468,7 @@ alias dmdExe = makeRuleWithArgs!((MethodInitializer!BuildRule builder, BuildRule
+             ].chain(extraFlags, platformArgs, flags["DFLAGS"],
+                 // source files need to have relative paths in order for the code coverage
+                 // .lst files to be named properly for CodeCov to find them
+-                rule.sources.map!(e => e.relativePath(dmdRepo))
++                rule.sources.map!(e => e.relativePath(compilerDir))
+             ).array);
+ });
+ 
+@@ -564,9 +565,9 @@ alias dmdPGO = makeRule!((builder, rule) {
+             // Run phobos unittests
+             //TODO makefiles
+             //generated/linux/release/64/unittest/test_runner builds the unittests without running them.
+-            const scope cmd = ["make", "-C", "../phobos", "-j" ~ jobs.to!string, "-fposix.mak", "generated/linux/release/64/unittest/test_runner", "DMD_DIR="~dmdRepo];
++            const scope cmd = ["make", "-C", "../phobos", "-j" ~ jobs.to!string, "-fposix.mak", "generated/linux/release/64/unittest/test_runner", "DMD_DIR="~compilerDir];
+             log("%-(%s %)", cmd);
+-            if (spawnProcess(cmd, null, Config.init, dmdRepo).wait())
++            if (spawnProcess(cmd, null, Config.init, compilerDir).wait())
+                 stderr.writeln("Phobos Tests failed! This will not end the PGO build because some data may have been gathered");
+         }));
+     alias finalDataMerge = methodInit!(BuildRule, (rundBuilder, rundRule) => rundBuilder
+@@ -784,7 +785,7 @@ alias toolsRepo = makeRule!((builder, rule) => builder
+         auto toolsDir = env["TOOLS_DIR"];
+         version(Win32)
+             // Win32-git seems to confuse C:\... as a relative path
+-            toolsDir = toolsDir.relativePath(dmdRepo);
++            toolsDir = toolsDir.relativePath(compilerDir);
+         run([env["GIT"], "clone", "--depth=1", env["GIT_HOME"] ~ "/tools", toolsDir]);
+     })
+ );
+@@ -870,7 +871,7 @@ alias man = makeRule!((builder, rule) {
+     alias genMan = methodInit!(BuildRule, (genManBuilder, genManRule) => genManBuilder
+         .target(env["G"].buildPath("gen_man"))
+         .sources([
+-            dmdRepo.buildPath("docs", "gen_man.d"),
++            compilerDir.buildPath("docs", "gen_man.d"),
+             env["D"].buildPath("cli.d")])
+         .command([
+             env["HOST_DMD_RUN"],
+@@ -897,7 +898,7 @@ alias man = makeRule!((builder, rule) {
+         "man1/dumpobj.1 man1/obj2asm.1 man5/dmd.conf.5".split
+         .map!(e => methodInit!(BuildRule, (manFileBuilder, manFileRule) => manFileBuilder
+             .target(genManDir.buildPath(e))
+-            .sources([dmdRepo.buildPath("docs", "man", e)])
++            .sources([compilerDir.buildPath("docs", "man", e)])
+             .deps([directoryRule(manFileRule.target.dirName)])
+             .commandFunction(() => copyAndTouch(manFileRule.sources[0], manFileRule.target))
+             .msg("copy '%s' to '%s'".format(manFileRule.sources[0], manFileRule.target))
+@@ -1046,17 +1047,17 @@ alias install = makeRule!((builder, rule) {
+         installRelativeFiles(env["INSTALL"].buildPath(env["OS"], bin), dmdExeFile.dirName, dmdExeFile.only, octal!755);
+ 
+         version (Windows)
+-            installRelativeFiles(env["INSTALL"], dmdRepo, sourceFiles);
++            installRelativeFiles(env["INSTALL"], compilerDir, sourceFiles);
+ 
+         const scPath = buildPath(env["OS"], bin, conf);
+-        const iniPath = buildPath(dmdRepo, "ini");
++        const iniPath = buildPath(compilerDir, "ini");
+ 
+         // The sources distributed alongside an official release only include the
+         // configuration of the current OS at the root directory instead of the
+         // whole `ini` folder in the project root.
+         const confPath = iniPath.exists()
+                         ? buildPath(iniPath, scPath)
+-                        : buildPath(dmdRepo, "..", scPath);
++                        : buildPath(dmdRepo, scPath);
+ 
+         copyAndTouch(confPath, buildPath(env["INSTALL"], scPath));
+ 
+@@ -1235,9 +1236,9 @@ void parseEnvironment()
+     else
+         enum installPref = "..";
+ 
+-    env.setDefault("INSTALL", environment.get("INSTALL_DIR", dmdRepo.buildPath(installPref, "install")));
++    env.setDefault("INSTALL", environment.get("INSTALL_DIR", compilerDir.buildPath(installPref, "install")));
+ 
+-    env.setDefault("DOCSRC", dmdRepo.buildPath("dlang.org"));
++    env.setDefault("DOCSRC", compilerDir.buildPath("dlang.org"));
+     env.setDefault("DOCDIR", srcDir);
+     env.setDefault("DOC_OUTPUT_DIR", env["DOCDIR"]);
+ 
+@@ -1246,10 +1247,10 @@ void parseEnvironment()
+     env["COMMON"] = d.buildPath("common");
+     env["ROOT"] = d.buildPath("root");
+     env["EX"] = srcDir.buildPath("examples");
+-    auto generated = env["GENERATED"] = dmdRepo.buildPath("generated");
++    auto generated = env["GENERATED"] = compilerDir.buildPath("../generated");
+     auto g = env["G"] = generated.buildPath(os, build, model);
+     mkdirRecurse(g);
+-    env.setDefault("TOOLS_DIR", dmdRepo.dirName.buildPath("tools"));
++    env.setDefault("TOOLS_DIR", compilerDir.dirName.buildPath("tools"));
+ 
+     auto hostDmdDef = env.getDefault("HOST_DMD", null);
+     if (hostDmdDef.length == 0)
+@@ -2220,7 +2221,7 @@ class BuildException : Exception
+ The directory where all run commands are executed from.  All relative file paths
+ in a `run` command must be relative to `runDir`.
+ */
+-alias runDir = dmdRepo;
++alias runDir = compilerDir;
+ 
+ /**
+ Run a command which may not succeed and optionally log the invocation.
+diff --git a/compiler/src/posix.mak b/compiler/src/posix.mak
+index 552ac2b17..6a3d19465 100644
+--- a/compiler/src/posix.mak
++++ b/compiler/src/posix.mak
+@@ -68,7 +68,7 @@ endif
+ INSTALL_DIR=../../install
+ D = dmd
+ 
+-GENERATED = ../generated
++GENERATED = ../../generated
+ G = $(GENERATED)/$(OS)/$(BUILD)/$(MODEL)
+ $(shell mkdir -p $G)
+ 
+diff --git a/compiler/src/win32.mak b/compiler/src/win32.mak
+index 9faccf743..acbe15633 100644
+--- a/compiler/src/win32.mak
++++ b/compiler/src/win32.mak
+@@ -49,7 +49,7 @@ OS=windows
+ D=dmd
+ 
+ # Generated files directory
+-GEN = ..\generated
++GEN = ..\..\generated
+ G = $(GEN)\$(OS)\$(BUILD)\$(MODEL)
+ 
+ ##### Tools
+diff --git a/compiler/src/win64.mak b/compiler/src/win64.mak
+index 35452ccd3..9fdeb8756 100644
+--- a/compiler/src/win64.mak
++++ b/compiler/src/win64.mak
+@@ -17,7 +17,7 @@ OS=windows
+ 	$(HOST_DC) -g -of$@ $<
+ 
+ D=dmd
+-GEN = ..\generated
++GEN = ..\..\generated
+ G = $(GEN)\$(OS)\$(BUILD)\$(MODEL)
+ DEPENDENCIES=vcbuild\msvc-lib.exe $G
+ 
+diff --git a/compiler/test/Makefile b/compiler/test/Makefile
+index 25146ed95..28fe3871a 100644
+--- a/compiler/test/Makefile
++++ b/compiler/test/Makefile
+@@ -48,31 +48,31 @@ ifeq ($(findstring win,$(OS)),win)
+     PIC?=0
+ 
+     DRUNTIME_PATH=..\..\druntime
+-    PHOBOS_PATH=..\..\phobos
++    PHOBOS_PATH=..\..\..\phobos
+     export DFLAGS=-I$(DRUNTIME_PATH)\import -I$(PHOBOS_PATH)
+     export LIB=$(PHOBOS_PATH)
+ 
+     # auto-tester might run the testsuite with a different $(MODEL) than DMD
+     # has been compiled with. Hence we manually check which binary exists.
+     # For windows the $(OS) during build is: `windows`
+-    ifeq (,$(wildcard ../generated/windows/$(BUILD)/64/dmd$(EXE)))
++    ifeq (,$(wildcard ../../generated/windows/$(BUILD)/64/dmd$(EXE)))
+         DMD_MODEL=32
+     else
+         DMD_MODEL=64
+     endif
+-    export DMD=../generated/windows/$(BUILD)/$(DMD_MODEL)/dmd$(EXE)
++    export DMD=../../generated/windows/$(BUILD)/$(DMD_MODEL)/dmd$(EXE)
+ 
+ else
+     export EXE=
+ 
+     # auto-tester might run the testsuite with a different $(MODEL) than DMD
+     # has been compiled with. Hence we manually check which binary exists.
+-    ifeq (,$(wildcard ../generated/$(OS)/$(BUILD)/64/dmd))
++    ifeq (,$(wildcard ../../generated/$(OS)/$(BUILD)/64/dmd))
+         DMD_MODEL=32
+     else
+         DMD_MODEL=64
+     endif
+-    export DMD=../generated/$(OS)/$(BUILD)/$(DMD_MODEL)/dmd
++    export DMD=../../generated/$(OS)/$(BUILD)/$(DMD_MODEL)/dmd
+ 
+     # default to PIC, use PIC=1/0 to en-/disable PIC.
+     # Note that shared libraries and C files are always compiled with PIC.
+@@ -86,7 +86,7 @@ else
+     endif
+ 
+     DRUNTIME_PATH=../../druntime
+-    PHOBOS_PATH=../../phobos
++    PHOBOS_PATH=../../../phobos
+     # link against shared libraries (defaults to true on supported platforms, can be overridden w/ make SHARED=0)
+     SHARED=$(if $(findstring $(OS),linux freebsd),1,)
+     DFLAGS=-I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)
+diff --git a/compiler/test/compilable/extra-files/json2.json b/compiler/test/compilable/extra-files/json2.json
+index 54cc98b21..e4ee50e71 100644
+--- a/compiler/test/compilable/extra-files/json2.json
++++ b/compiler/test/compilable/extra-files/json2.json
+@@ -9,7 +9,7 @@
+         "importPaths": [
+             "compilable",
+             "../../druntime/import",
+-            "../../phobos"
++            "../../../phobos"
+         ],
+         "libName": "VALUE_REMOVED_FOR_TEST",
+         "libraryFiles": [
+diff --git a/compiler/test/dshell/test_shared.d b/compiler/test/dshell/test_shared.d
+index be604a81e..daf053fb2 100644
+--- a/compiler/test/dshell/test_shared.d
++++ b/compiler/test/dshell/test_shared.d
+@@ -10,7 +10,7 @@ int main()
+ 
+     run("$DMD -m$MODEL -of$OUTPUT_BASE/a$EXE -defaultlib=libphobos2.so $EXTRA_FILES/test_shared.d");
+     run("$OUTPUT_BASE/a$EXE", stdout, stderr, [
+-        "LD_LIBRARY_PATH" : "../../phobos/generated/"~OS~'/'~BUILD~'/'~MODEL
++        "LD_LIBRARY_PATH" : "../../../phobos/generated/"~OS~'/'~BUILD~'/'~MODEL
+     ]);
+ 
+     return 0;
+diff --git a/compiler/test/dub_package/retrieveScope.d b/compiler/test/dub_package/retrieveScope.d
+index e04759a50..2bab27699 100755
+--- a/compiler/test/dub_package/retrieveScope.d
++++ b/compiler/test/dub_package/retrieveScope.d
+@@ -61,10 +61,10 @@ private struct CallbackHelper {
+ 
+ int main()
+ {
+-    auto dmdParentDir = dirName(dirName(dirName(__FILE_FULL_PATH__)));
++    auto dmdParentDir = dirName(dirName(dirName(dirName(__FILE_FULL_PATH__))));
+     global.path = new Strings();
+     global.path.push((dmdParentDir ~ "/phobos").ptr);
+-    global.path.push((dmdParentDir ~ "/druntime/import").ptr);
++    global.path.push((dmdParentDir ~ "/dmd/druntime/import").ptr);
+ 
+     /* comment for error output in parsing & semantic */
+     diagnosticHandler = (const ref Loc location,
+diff --git a/compiler/test/run.d b/compiler/test/run.d
+index c86f9221a..e8d81d087 100755
+--- a/compiler/test/run.d
++++ b/compiler/test/run.d
+@@ -540,7 +540,7 @@ string[string] getEnvironment()
+         env["DSEP"] = "/";
+         env["SEP"] = "/";
+         auto druntimePath = environment.get("DRUNTIME_PATH", testPath(`../../druntime`));
+-        auto phobosPath = environment.get("PHOBOS_PATH", testPath(`../../phobos`));
++        auto phobosPath = environment.get("PHOBOS_PATH", testPath(`../../../phobos`));
+ 
+         // default to PIC, use PIC=1/0 to en-/disable PIC.
+         // Note that shared libraries and C files are always compiled with PIC.
+diff --git a/compiler/test/tools/paths.d b/compiler/test/tools/paths.d
+index 6bcb70ed4..acb525bda 100644
+--- a/compiler/test/tools/paths.d
++++ b/compiler/test/tools/paths.d
+@@ -30,12 +30,13 @@ else version (SunOS)
+ else
+     static assert(0, "Unrecognized or unsupported OS.");
+ 
+-enum projectRootDir = __FILE_FULL_PATH__.dirName.buildNormalizedPath("..", "..");
++enum projectRootDir = __FILE_FULL_PATH__.dirName.buildNormalizedPath("..", "..", "..");
+ enum generatedDir = projectRootDir.buildPath("generated");
+ 
+ enum dmdFilename = "dmd".setExtension(exeExtension);
+ 
+-alias testPath = path => projectRootDir.buildPath("test", path);
++enum compilerRootDir = __FILE_FULL_PATH__.dirName.buildNormalizedPath("..", "..");
++alias testPath = path => compilerRootDir.buildPath("test", path);
+ 
+ string build()
+ {
+diff --git a/compiler/test/tools/unit_test_runner.d b/compiler/test/tools/unit_test_runner.d
+index 43f77e2a1..dd902ea92 100755
+--- a/compiler/test/tools/unit_test_runner.d
++++ b/compiler/test/tools/unit_test_runner.d
+@@ -239,7 +239,7 @@ void writeRunnerFile(Range)(Range moduleNames, string path, string filter)
+         .joiner(",\n")
+         .to!string;
+ 
+-    const content = format!codeTemplate(imports, modules, format!`"%s"`(filter), projectRootDir);
++    const content = format!codeTemplate(imports, modules, format!`"%s"`(filter), compilerRootDir);
+     write(path, content);
+ }
+ 
+@@ -269,7 +269,7 @@ string[] buildCmdArgs(string runnerPath, string outputPath, const string[] testF
+         "-of" ~ outputPath,
+         "-m" ~ model
+     ],
+-        testFiles.map!(f => relativePath(f, projectRootDir)),
++        testFiles.map!(f => relativePath(f, compilerRootDir)),
+         [ runnerPath ]
+     ).array;
+ 
+@@ -339,7 +339,7 @@ int main(string[] args)
+     const flags = buildCmdArgs(runnerPath, outputPath, testFiles);
+     write(cmdfilePath, flags.join("\n"));
+ 
+-    const dmd = execute([ dmdPath, "@" ~ cmdfilePath ], null, Config.none, size_t.max, projectRootDir);
++    const dmd = execute([ dmdPath, "@" ~ cmdfilePath ], null, Config.none, size_t.max, compilerRootDir);
+     if (dmd.status)
+     {
+         enum msg = "Failed to compile the `unit` test executable! (exit code %d)
+diff --git a/compiler/test/unit/support.d b/compiler/test/unit/support.d
+index ddaf9fe20..5751ff923 100644
+--- a/compiler/test/unit/support.d
++++ b/compiler/test/unit/support.d
+@@ -20,8 +20,8 @@ string[] defaultImportPaths()
+     import std.path : buildNormalizedPath, buildPath, dirName;
+     import std.process : environment;
+ 
+-    enum dlangDir = __FILE_FULL_PATH__.dirName.buildNormalizedPath("..", "..", "..");
+-    enum druntimeDir = dlangDir.buildPath("druntime", "import");
++    enum dlangDir = __FILE_FULL_PATH__.dirName.buildNormalizedPath("..", "..", "..", "..");
++    enum druntimeDir = dlangDir.buildPath("dmd", "druntime", "import");
+     enum phobosDir = dlangDir.buildPath("phobos");
+ 
+     return [
+diff --git a/druntime/posix.mak b/druntime/posix.mak
+index 60554d8cd..3ab24a64b 100644
+--- a/druntime/posix.mak
++++ b/druntime/posix.mak
+@@ -5,9 +5,9 @@
+ 
+ QUIET:=
+ 
+-DMD_DIR=../dmd
++DMD_DIR=../compiler
+ DUB=dub
+-TOOLS_DIR=../tools
++TOOLS_DIR=../../tools
+ 
+ include $(DMD_DIR)/src/osmodel.mak
+ 
+@@ -25,8 +25,8 @@ ifneq ($(BUILD),release)
+     endif
+ endif
+ 
+-DMD=$(DMD_DIR)/generated/$(OS)/$(BUILD)/$(MODEL)/dmd
+-INSTALL_DIR=../install
++DMD=$(DMD_DIR)/../generated/$(OS)/$(BUILD)/$(MODEL)/dmd
++INSTALL_DIR=../../install
+ 
+ # directory where the html files for the documentation are placed
+ DOC_OUTPUT_DIR=doc
+@@ -88,7 +88,7 @@ endif
+ UTFLAGS:=-version=CoreUnittest -unittest -checkaction=context
+ 
+ # Set PHOBOS_DFLAGS (for linking against Phobos)
+-PHOBOS_PATH=../phobos
++PHOBOS_PATH=../../phobos
+ SHARED=$(if $(findstring $(OS),linux freebsd),1,)
+ ROOT_DIR := $(shell pwd)
+ PHOBOS_DFLAGS=-conf= $(MODEL_FLAG) -I$(ROOT_DIR)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL) $(PIC)
+@@ -96,7 +96,7 @@ ifeq (1,$(SHARED))
+ PHOBOS_DFLAGS+=-defaultlib=libphobos2.so -L-rpath=$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)
+ endif
+ 
+-ROOT_OF_THEM_ALL = generated
++ROOT_OF_THEM_ALL = ../generated
+ ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(BUILD)/$(MODEL)
+ OBJDIR=obj/$(OS)/$(BUILD)/$(MODEL)
+ DRUNTIME_BASE=druntime-$(OS)$(MODEL)
+diff --git a/druntime/win32.mak b/druntime/win32.mak
+index 68a142348..960d62c43 100644
+--- a/druntime/win32.mak
++++ b/druntime/win32.mak
+@@ -4,10 +4,10 @@
+ # Ignored, only the default value is supported
+ #MODEL=32omf
+ 
+-DMD_DIR=..\dmd
++DMD_DIR=..\compiler
+ BUILD=release
+ OS=windows
+-DMD=$(DMD_DIR)\generated\$(OS)\$(BUILD)\32\dmd
++DMD=$(DMD_DIR)\..\generated\$(OS)\$(BUILD)\32\dmd
+ 
+ # Used for running MASM assembler on .asm files
+ CC=dmc
+diff --git a/druntime/win64.mak b/druntime/win64.mak
+index 9d118884b..d1a7c7dc3 100644
+--- a/druntime/win64.mak
++++ b/druntime/win64.mak
+@@ -9,13 +9,13 @@ MODEL=64
+ # Otherwise set it explicitly, e.g., to `C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Tools\MSVC\14.29.30133\bin\Hostx86\x86\cl.exe`.
+ CC=cl
+ 
+-DMD_DIR=..\dmd
++DMD_DIR=..\compiler
+ 
+ BUILD=release
+ OS=windows
+ 
+ # The D compiler used to build things
+-DMD=$(DMD_DIR)\generated\$(OS)\$(BUILD)\$(MODEL)\dmd
++DMD=$(DMD_DIR)\..\generated\$(OS)\$(BUILD)\$(MODEL)\dmd
+ 
+ DOCDIR=doc
+ IMPDIR=import
+diff --git a/posix.mak b/posix.mak
+index f451a3008..59f765f29 100644
+--- a/posix.mak
++++ b/posix.mak
+@@ -1,18 +1,19 @@
+ INSTALL_DIR=$(PWD)/../install
+ ECTAGS_LANGS = Make,C,C++,D,Sh
+-ECTAGS_FILES = src/dmd/*.[chd] src/dmd/backend/*.[chd] src/dmd/root/*.[chd]
++ECTAGS_FILES = compiler/dmd/*.[chd] compiler/dmd/backend/*.[chd] compiler/dmd/root/*.[chd]
+ 
+ .PHONY: all clean test install auto-tester-build auto-tester-test toolchain-info
+ 
+ all:
+-	$(QUIET)$(MAKE) -C src -f posix.mak all
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak all
++	$(QUIET)$(MAKE) -C druntime -f posix.mak target
+ 
+ ifneq (,$(findstring Darwin_64_32, $(PWD)))
+ auto-tester-build:
+ 	echo "Darwin_64_32_disabled"
+ else
+ auto-tester-build:
+-	$(QUIET)$(MAKE) -C src -f posix.mak auto-tester-build ENABLE_RELEASE=1 ENABLE_ASSERTS=1
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak auto-tester-build ENABLE_RELEASE=1 ENABLE_ASSERTS=1
+ endif
+ 
+ ifneq (,$(findstring Darwin_64_32, $(PWD)))
+@@ -24,28 +25,28 @@ auto-tester-test: test
+ else # POSIX
+ # Like test, but without runnable_cxx
+ auto-tester-test:
+-	$(QUIET)$(MAKE) -C src -f posix.mak auto-tester-test
+-	$(QUIET)$(MAKE) -C test -f Makefile auto-tester-test
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak auto-tester-test
++	$(QUIET)$(MAKE) -C compiler/test -f Makefile auto-tester-test
+ endif
+ endif
+ 
+ buildkite-test: test
+ 
+ toolchain-info:
+-	$(QUIET)$(MAKE) -C src -f posix.mak toolchain-info
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak toolchain-info
+ 
+ clean:
+-	$(QUIET)$(MAKE) -C src -f posix.mak clean
+-	$(QUIET)$(MAKE) -C test -f Makefile clean
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak clean
++	$(QUIET)$(MAKE) -C compiler/test -f Makefile clean
+ 	$(RM) tags
+ 
+ test:
+-	$(QUIET)$(MAKE) -C src -f posix.mak unittest
+-	$(QUIET)$(MAKE) -C src -f posix.mak dmd
+-	$(QUIET)$(MAKE) -C test -f Makefile
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak unittest
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak dmd
++	$(QUIET)$(MAKE) -C compiler/test -f Makefile
+ 
+ html:
+-	$(QUIET)$(MAKE) -C src -f posix.mak html
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak html
+ 
+ # Creates Exuberant Ctags tags file
+ tags: posix.mak $(ECTAGS_FILES)
+@@ -57,8 +58,8 @@ install:
+ 	echo "Darwin_64_32_disabled"
+ else
+ install: all
+-	$(MAKE) INSTALL_DIR=$(INSTALL_DIR) -C src -f posix.mak install
+-	cp -r samples $(INSTALL_DIR)
++	$(MAKE) INSTALL_DIR=$(INSTALL_DIR) -C compiler/src -f posix.mak install
++	cp -r compiler/samples $(INSTALL_DIR)
+ 	mkdir -p $(INSTALL_DIR)/man
+ 	cp -r docs/man/* $(INSTALL_DIR)/man/
+ endif
+@@ -74,7 +75,7 @@ check-clean-git:
+ 	fi
+ 
+ style:
+-	$(QUIET)$(MAKE) -C src -f posix.mak style
++	$(QUIET)$(MAKE) -C compiler/src -f posix.mak style
+ 
+ .DELETE_ON_ERROR: # GNU Make directive (delete output files on error)
+ 
+diff --git a/win32.mak b/win32.mak
+index 04c280cc6..d46366f53 100644
+--- a/win32.mak
++++ b/win32.mak
+@@ -1,20 +1,20 @@
+ MAKE=make
+ 
+ defaulttarget:
+-	cd src
++	cd compiler\src
+ 	$(MAKE) -f win32.mak
+-	cd ..
++	cd ..\..
+ 
+ auto-tester-build:
+-	cd src
++	cd compiler\src
+ 	$(MAKE) -f win32.mak auto-tester-build
+-	cd ..
++	cd ..\..
+ 
+ auto-tester-test:
+-	cd test
++	cd compiler\test
+ 	$(MAKE)
+-	cd ..
+-	cd samples
++	cd ..\..
++	cd compiler\samples
+ 	gmake -f win32.mak DMD=..\src\dmd.exe MODEL=$(MODEL) "LIB=..\..\phobos;$(LIB)" \
+ 		"DFLAGS=-I..\..\druntime\import -I..\..\phobos -m$(MODEL)"
+-	cd ..
++	cd ..\..
+diff --git a/win64.mak b/win64.mak
+index 2e1127364..1bca74b0c 100644
+--- a/win64.mak
++++ b/win64.mak
+@@ -5,5 +5,5 @@
+ MAKE=make
+ 
+ all:
+-	cd src
++	cd compiler\src
+ 	$(MAKE) -f win64.mak
+-- 
+2.34.1
+

@@ -1,0 +1,100 @@
+From 567c7af336afd4ad15fff4b9016e8f7739c5119c Mon Sep 17 00:00:00 2001
+From: Martin Nowak <code@dawg.eu>
+Date: Wed, 30 Oct 2013 22:15:42 +0100
+Subject: [PATCH 4/5] fix 2.064 merge issue
+
+- The function printThrowable relied on the Throwable.toString(sink)
+  overload from #636 which is not available in 2.064.
+
+- Fixed by re-adding the old exception print code.
+---
+ src/rt/dmain2.d | 66 +++++++++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 56 insertions(+), 10 deletions(-)
+
+diff --git a/src/rt/dmain2.d b/src/rt/dmain2.d
+index 989e22a2..4ecd7c60 100644
+--- a/src/rt/dmain2.d
++++ b/src/rt/dmain2.d
+@@ -432,23 +432,69 @@ extern (C) int _d_run_main(int argc, char **argv, MainFunc mainFunc)
+ 
+ private void printThrowable(Throwable t)
+ {
+-    void sink(const(char)[] buf) nothrow
++    static void printLocLine(Throwable t)
+     {
+-        printf("%.*s", cast(int)buf.length, buf.ptr);
++        if (t.file)
++        {
++            console(t.classinfo.name)("@")(t.file)("(")(t.line)(")");
++        }
++        else
++        {
++            console(t.classinfo.name);
++        }
++        console("\n");
+     }
+ 
+-    for (; t; t = t.next)
++    static void printMsgLine(Throwable t)
+     {
+-        t.toString(&sink); sink("\n");
++        if (t.file)
++        {
++            console(t.classinfo.name)("@")(t.file)("(")(t.line)(")");
++        }
++        else
++        {
++            console(t.classinfo.name);
++        }
++        if (t.msg)
++        {
++            console(": ")(t.msg);
++        }
++        console("\n");
++    }
+ 
+-        auto e = cast(Error)t;
+-        if (e is null || e.bypassedException is null) continue;
++    static void printInfoBlock(Throwable t)
++    {
++        if (t.info)
++        {
++            console("----------------\n");
++            foreach (i; t.info)
++                console(i)("\n");
++            console("----------------\n");
++        }
++    }
+ 
+-        sink("=== Bypassed ===\n");
+-        for (auto t2 = e.bypassedException; t2; t2 = t2.next)
++    Throwable firstWithBypass = null;
++
++    for (; t; t = t.next)
++    {
++        printMsgLine(t);
++        printInfoBlock(t);
++        auto e = cast(Error) t;
++        if (e && e.bypassedException)
+         {
+-            t2.toString(&sink); sink("\n");
++            console("Bypasses ");
++            printLocLine(e.bypassedException);
++            if (firstWithBypass is null)
++                firstWithBypass = t;
+         }
+-        sink("=== ~Bypassed ===\n");
++    }
++    if (firstWithBypass is null)
++        return;
++    console("=== Bypassed ===\n");
++    for (t = firstWithBypass; t; t = t.next)
++    {
++        auto e = cast(Error) t;
++        if (e && e.bypassedException)
++            printThrowable(e.bypassedException);
+     }
+ }
+-- 
+2.34.1
+

@@ -1,0 +1,26 @@
+ src/dmd/expressionsem.d | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/src/dmd/expressionsem.d b/src/dmd/expressionsem.d
+index a320ace26..ebc4fee9b 100644
+--- a/src/dmd/expressionsem.d
++++ b/src/dmd/expressionsem.d
+@@ -2046,7 +2046,6 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
+                  */
+                 err |= checkParamArgumentEscape(sc, fd, p, cast(STC) pStc, arg, false, false);
+             }
+-<<<<<<< HEAD
+ 
+             // Turning heap allocations into stack allocations is dangerous without dip1000, since `scope` inference
+             // may be unreliable when scope violations only manifest as deprecation warnings.
+@@ -2056,10 +2055,6 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
+             if ((pStc & (STC.scope_ | STC.lazy_)) &&
+                 ((global.params.useDIP1000 == FeatureState.enabled) || explicitScope) &&
+                 !(pStc & STC.return_))
+-=======
+-            else if (!(pStc & STC.return_) &&
+-                ((global.params.useDIP1000 == FeatureState.enabled) || !(p.storageClass & STC.scopeinferred)))
+->>>>>>> stable
+             {
+                 /* Argument value cannot escape from the called function.
+                  */

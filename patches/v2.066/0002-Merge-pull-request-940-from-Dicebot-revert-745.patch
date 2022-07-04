@@ -1,0 +1,25 @@
+From 3eb35e08a495593ac38db1fa332871a2931cd103 Mon Sep 17 00:00:00 2001
+From: Hara Kenji <k.hara.pg+dev@gmail.com>
+Date: Sun, 31 Aug 2014 02:48:04 +0900
+Subject: [PATCH 2/3] Merge pull request #940 from Dicebot/revert-745
+
+[REG 2.066] Fix 13399 "va_arg is nothrow yet may throw "
+---
+ src/core/stdc/stdarg.d | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/src/core/stdc/stdarg.d b/src/core/stdc/stdarg.d
+index 87418d75..f53ec867 100644
+--- a/src/core/stdc/stdarg.d
++++ b/src/core/stdc/stdarg.d
+@@ -13,7 +13,6 @@
+ module core.stdc.stdarg;
+ 
+ @system:
+-nothrow:
+ //@nogc:    // Not yet, need to make TypeInfo's member functions @nogc first
+ 
+ version( X86 )
+-- 
+2.34.1
+

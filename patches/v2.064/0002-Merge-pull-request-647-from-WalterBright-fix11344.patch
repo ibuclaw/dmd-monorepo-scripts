@@ -1,0 +1,59 @@
+From 906d15207000ae0194d3a7b6efa06c3ecead1ae0 Mon Sep 17 00:00:00 2001
+From: Andrej Mitrovic <andrej.mitrovich@gmail.com>
+Date: Mon, 28 Oct 2013 12:18:41 -0700
+Subject: [PATCH 2/5] Merge pull request #647 from WalterBright/fix11344
+
+fix Issue 11344 - Error: object.destroy called with argument types matches both
+---
+ src/object.di |  2 +-
+ src/object_.d | 14 +++++++++++++-
+ 2 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/object.di b/src/object.di
+index 7c288e80..1cffad4e 100644
+--- a/src/object.di
++++ b/src/object.di
+@@ -521,7 +521,7 @@ void destroy(T)(ref T obj) if (is(T == struct))
+         buf[] = init[];
+ }
+ 
+-void destroy(T : U[n], U, size_t n)(ref T obj)
++void destroy(T : U[n], U, size_t n)(ref T obj) if (!is(T == struct))
+ {
+     obj[] = U.init;
+ }
+diff --git a/src/object_.d b/src/object_.d
+index f8b68eac..cb57fee6 100644
+--- a/src/object_.d
++++ b/src/object_.d
+@@ -2358,7 +2358,7 @@ version(unittest) unittest
+    }
+ }
+ 
+-void destroy(T : U[n], U, size_t n)(ref T obj)
++void destroy(T : U[n], U, size_t n)(ref T obj) if (!is(T == struct))
+ {
+     obj[] = U.init;
+ }
+@@ -2372,6 +2372,18 @@ version(unittest) unittest
+     assert(a == [ 0, 0 ]);
+ }
+ 
++unittest
++{
++    static struct vec2f {
++        float[2] values;
++        alias values this;
++    }
++
++    vec2f v;
++    destroy!vec2f(v);
++}
++
++
+ void destroy(T)(ref T obj)
+     if (!is(T == struct) && !is(T == interface) && !is(T == class) && !_isStaticArray!T)
+ {
+-- 
+2.34.1
+
