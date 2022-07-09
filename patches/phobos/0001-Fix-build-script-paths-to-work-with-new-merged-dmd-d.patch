@@ -1,15 +1,38 @@
-From f409c7f9f3435e923ea5103ca808799b61514ff7 Mon Sep 17 00:00:00 2001
+From aeca10f25228da73230ef1245bf1d0f2b362c3ae Mon Sep 17 00:00:00 2001
 From: Iain Buclaw <ibuclaw@gdcproject.org>
 Date: Sun, 3 Jul 2022 18:22:06 +0200
 Subject: [PATCH] Fix build script paths to work with new merged dmd-druntime
  repository
 
 ---
- posix.mak | 10 +++++-----
- win32.mak |  2 +-
- win64.mak |  2 +-
- 3 files changed, 7 insertions(+), 7 deletions(-)
+ .circleci/run.sh | 4 ++--
+ posix.mak        | 8 ++++----
+ win32.mak        | 2 +-
+ win64.mak        | 2 +-
+ 4 files changed, 8 insertions(+), 8 deletions(-)
 
+diff --git a/.circleci/run.sh b/.circleci/run.sh
+index c92c8aec4..873de6f19 100755
+--- a/.circleci/run.sh
++++ b/.circleci/run.sh
+@@ -75,7 +75,7 @@ setup_repos()
+         git checkout -f FETCH_HEAD
+     fi
+ 
+-    for proj in dmd druntime tools ; do
++    for proj in dmd tools ; do
+         if [ "$base_branch" != master ] && [ "$base_branch" != stable ] &&
+             ! git ls-remote --exit-code --heads https://github.com/dlang/$proj.git "$base_branch" > /dev/null; then
+             # use master as fallback for other repos to test feature branches
+@@ -90,7 +90,7 @@ setup_repos()
+ 
+     # build dmd and druntime
+     pushd ../dmd && ./src/build.d MODEL=$MODEL HOST_DMD="$DMD" BUILD=$BUILD PIC="$PIC" all && popd
+-    make -j"$N" -C ../druntime -f posix.mak MODEL=$MODEL HOST_DMD="$DMD" BUILD=$BUILD
++    pushd ../dmd && make -j"$N" -C druntime -f posix.mak MODEL=$MODEL HOST_DMD="$DMD" BUILD=$BUILD && popd
+ }
+ 
+ # run unittest with coverage
 diff --git a/posix.mak b/posix.mak
 index 21a6064dd..7314744cd 100644
 --- a/posix.mak

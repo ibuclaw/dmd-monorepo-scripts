@@ -1,32 +1,394 @@
-From 84d401c731a7f2347257893eebde0400b8f02935 Mon Sep 17 00:00:00 2001
+From ba137296801f51e3dfe7c1870a2dc65b515132d7 Mon Sep 17 00:00:00 2001
 From: Iain Buclaw <ibuclaw@gdcproject.org>
 Date: Sun, 3 Jul 2022 17:28:13 +0200
 Subject: [PATCH] Fix build script paths to work with new merged repository
  structure
 
 ---
- compiler/src/build.d                          | 45 ++++++++++---------
- compiler/src/posix.mak                        |  2 +-
- compiler/src/win32.mak                        |  2 +-
- compiler/src/win64.mak                        |  2 +-
- compiler/test/Makefile                        | 12 ++---
- .../test/compilable/extra-files/json2.json    |  2 +-
- compiler/test/dshell/test_shared.d            |  2 +-
- compiler/test/dub_package/retrieveScope.d     |  4 +-
- compiler/test/run.d                           |  2 +-
- compiler/test/tools/paths.d                   |  5 ++-
- compiler/test/tools/unit_test_runner.d        |  6 +--
- compiler/test/unit/support.d                  |  4 +-
- druntime/posix.mak                            | 12 ++---
- druntime/win32.mak                            |  4 +-
- druntime/win64.mak                            |  4 +-
- posix.mak                                     | 31 ++++++-------
- win32.mak                                     | 16 +++----
- win64.mak                                     |  2 +-
- 18 files changed, 80 insertions(+), 77 deletions(-)
+ .circleci/run.sh                              |  30 ++---
+ .cirrus.yml                                   |   1 +
+ .github/workflows/runnable_cxx.yml            | 114 ++++++++++++++----
+ ci/run.sh                                     |  20 +--
+ compiler/src/build.d                          |  45 +++----
+ compiler/src/posix.mak                        |   2 +-
+ compiler/src/win32.mak                        |   2 +-
+ compiler/src/win64.mak                        |   2 +-
+ compiler/test/Makefile                        |  12 +-
+ .../test/compilable/extra-files/json2.json    |   2 +-
+ compiler/test/dshell/test_shared.d            |   2 +-
+ compiler/test/dub_package/retrieveScope.d     |   4 +-
+ compiler/test/run.d                           |   2 +-
+ compiler/test/tools/paths.d                   |   5 +-
+ compiler/test/tools/unit_test_runner.d        |   6 +-
+ compiler/test/unit/support.d                  |   4 +-
+ .../gcbench/vdparser.extra/vdc/ast/tmpl.d     |   2 +-
+ druntime/posix.mak                            |  12 +-
+ druntime/src/core/int128.d                    |   2 -
+ druntime/src/core/sys/darwin/mach/getsect.d   |   1 -
+ druntime/src/core/sys/dragonflybsd/string.d   |   1 -
+ druntime/src/core/sys/linux/sys/time.d        |   1 -
+ druntime/src/core/sys/linux/sys/xattr.d       |   1 -
+ druntime/src/core/sys/linux/tipc.d            |   1 -
+ druntime/src/core/sys/posix/sys/select.d      |   1 -
+ druntime/src/core/sys/posix/ucontext.d        |   1 -
+ druntime/src/core/sys/solaris/sys/priocntl.d  |   1 -
+ druntime/src/core/sys/solaris/sys/procset.d   |   1 -
+ druntime/src/core/sys/windows/cguid.d         |   1 -
+ druntime/src/core/sys/windows/ntsecpkg.d      |   1 -
+ druntime/src/core/sys/windows/olectlid.d      |   1 -
+ druntime/src/core/sys/windows/shlguid.d       |   1 -
+ druntime/src/core/sys/windows/sspi.d          |   1 -
+ druntime/src/rt/dylib_fixes.c                 |   1 -
+ druntime/test/gc/nocollect.d                  |   2 +-
+ druntime/test/init_fini/win64.mak             |   1 -
+ druntime/test/uuid/win64.mak                  |   1 -
+ druntime/win32.mak                            |   4 +-
+ druntime/win64.mak                            |   4 +-
+ posix.mak                                     |  31 ++---
+ win32.mak                                     |  16 +--
+ win64.mak                                     |   2 +-
+ 42 files changed, 201 insertions(+), 144 deletions(-)
 
+diff --git a/.circleci/run.sh b/.circleci/run.sh
+index 06062ee6ed..5121f41111 100755
+--- a/.circleci/run.sh
++++ b/.circleci/run.sh
+@@ -95,7 +95,7 @@ setup_repos() {
+         git checkout -f FETCH_HEAD
+     fi
+ 
+-    for proj in druntime phobos; do
++    for proj in phobos; do
+         if [ $base_branch != master ] && [ $base_branch != stable ] &&
+             ! git ls-remote --exit-code --heads https://github.com/dlang/$proj.git $base_branch > /dev/null; then
+             # use master as fallback for other repos to test feature branches
+@@ -114,10 +114,10 @@ coverage()
+     local build_path=generated/linux/$BUILD/$MODEL
+     local builder=generated/build
+ 
+-    dmd -g -od=generated -of=$builder src/build
++    dmd -g -od=generated -of=$builder compiler/src/build
+     # build dmd, druntime, and phobos
+     $builder MODEL=$MODEL HOST_DMD=$DMD BUILD=$BUILD all
+-    make -j$N -C ../druntime -f posix.mak MODEL=$MODEL BUILD=$BUILD
++    make -j$N -C druntime -f posix.mak MODEL=$MODEL BUILD=$BUILD
+     make -j$N -C ../phobos -f posix.mak MODEL=$MODEL BUILD=$BUILD
+ 
+     # save the built dmd as host compiler this time
+@@ -134,14 +134,14 @@ coverage()
+ 
+     # FIXME
+     # Temporarily the failing long file name test has been removed
+-    rm -rf test/compilable/issue17167.sh
++    rm -rf compiler/test/compilable/issue17167.sh
+ 
+     # rebuild dmd with coverage enabled
+     $builder MODEL=$MODEL BUILD=$BUILD HOST_DMD=$PWD/_${build_path}/host_dmd ENABLE_COVERAGE=1
+ 
+     cp $build_path/dmd _${build_path}/host_dmd_cov
+     $builder MODEL=$MODEL BUILD=$BUILD HOST_DMD=$PWD/_${build_path}/host_dmd ENABLE_COVERAGE=1 unittest
+-    _${build_path}/host_dmd -Itest -i -run ./test/run.d -j$N MODEL=$MODEL BUILD=$BUILD ARGS="-O -inline -release" DMD_TEST_COVERAGE=1 HOST_DMD=$PWD/_${build_path}/host_dmd
++    _${build_path}/host_dmd -Itest -i -run ./compiler/test/run.d -j$N MODEL=$MODEL BUILD=$BUILD ARGS="-O -inline -release" DMD_TEST_COVERAGE=1 HOST_DMD=$PWD/_${build_path}/host_dmd
+ }
+ 
+ # Checks that all files have been committed and no temporary, untracked files exist.
+@@ -149,13 +149,13 @@ coverage()
+ check_clean_git()
+ {
+     # Restore temporarily removed files
+-    git checkout test/compilable/issue17167.sh
++    git checkout compiler/test/compilable/issue17167.sh
+     # Remove temporary directory + install script
+     rm -rf _generated
+     rm -f install.sh
+     # auto-removal of these files doesn't work on CirleCi
+-    rm -f test/compilable/vcg-ast.d.cg
+-    rm -f test/compilable/vcg-ast-arraylength.d.cg
++    rm -f compiler/test/compilable/vcg-ast.d.cg
++    rm -f compiler/test/compilable/vcg-ast-arraylength.d.cg
+     # Ensure that there are no untracked changes
+     make -f posix.mak check-clean-git
+ }
+@@ -164,7 +164,7 @@ check_clean_git()
+ check_run_individual()
+ {
+     local build_path=generated/linux/$BUILD/$MODEL
+-    "${build_path}/dmd" -I./test -i -run ./test/run.d "BUILD=$BUILD" "MODEL=$MODEL" test/runnable/template2962.d ./test/compilable/test14275.d
++    "${build_path}/dmd" -I./test -i -run ./compiler/test/run.d "BUILD=$BUILD" "MODEL=$MODEL" compiler/test/runnable/template2962.d ./compiler/test/compilable/test14275.d
+ }
+ 
+ # Checks the D build.d script
+@@ -173,12 +173,12 @@ check_d_builder()
+     echo "Testing D build"
+     # load environment for bootstrap compiler
+     source "$(CURL_USER_AGENT=\"$CURL_USER_AGENT\" bash ~/dlang/install.sh dmd-$HOST_DMD_VER --activate)"
+-    ./src/build.d clean
++    ./compiler/src/build.d clean
+     rm -rf generated # just to be sure
+     # TODO: add support for 32-bit builds
+-    ./src/build.d MODEL=64
++    ./compiler/src/build.d MODEL=64
+     ./generated/linux/release/64/dmd --version | grep -v "dirty"
+-    ./src/build.d clean
++    ./compiler/src/build.d clean
+     deactivate
+ }
+ 
+@@ -188,10 +188,10 @@ test_cxx()
+     # load environment for bootstrap compiler
+     source "$(CURL_USER_AGENT=\"$CURL_USER_AGENT\" bash ~/dlang/install.sh dmd-$HOST_DMD_VER --activate)"
+     echo "Test CXX frontend.h header generation"
+-    ./src/build.d
+-    make -j$N -C ../druntime -f posix.mak MODEL=$MODEL BUILD=$BUILD
++    ./compiler/src/build.d
++    make -j$N -C druntime -f posix.mak MODEL=$MODEL BUILD=$BUILD
+     make -j$N -C ../phobos -f posix.mak MODEL=$MODEL BUILD=$BUILD
+-    ./src/build.d cxx-headers-test
++    ./compiler/src/build.d cxx-headers-test
+     deactivate
+ }
+ 
+diff --git a/.cirrus.yml b/.cirrus.yml
+index 0afe9e791a..04b5ddd21f 100644
+--- a/.cirrus.yml
++++ b/.cirrus.yml
+@@ -1,3 +1,4 @@
++# Test
+ common_steps_template: &COMMON_STEPS_TEMPLATE
+   install_prerequisites_script: ./ci/cirrusci.sh
+   install_host_compiler_script: ./ci/run.sh install_host_compiler
+diff --git a/.github/workflows/runnable_cxx.yml b/.github/workflows/runnable_cxx.yml
+index 36ef4acf39..caee3f0b6e 100644
+--- a/.github/workflows/runnable_cxx.yml
++++ b/.github/workflows/runnable_cxx.yml
+@@ -119,9 +119,21 @@ jobs:
+           - { os: windows-2019, target: g++-6 }
+           - { os: windows-2019, target: g++-5 }
+ 
+-          # TODO: Implement support for clang and MSVC on Windows
++          # TODO: Implement support for clang and MSVC2017 on Windows
+           # Currently those are still being run by the auto-tester
+-          - os: windows-2019
++          # We can hardly test below 2017 in the CI because there's
++          # no way to install it via command line
++          # (TODO: Test with 2015 as the blog post is slightly ambiguous)
++          # https://devblogs.microsoft.com/cppblog/introducing-the-visual-studio-build-tools/
++          - { os: windows-2019, target: msvc-2017 }
++          - { os: windows-2019, target: msvc-2015 }
++          - { os: windows-2019, target: msvc-2013 }
++          - { os: windows-2019, target: clang-13.0.0 }
++          - { os: windows-2019, target: clang-12.0.0 }
++          - { os: windows-2019, target: clang-11.0.0 }
++          - { os: windows-2019, target: clang-10.0.0 }
++          - { os: windows-2019, target: clang-9.0.0 }
++          - { os: windows-2019, target: clang-8.0.0 }
+ 
+         # This sets the configuration for each jobs
+         # There's a bit of duplication involved (e.g. breaking down g++-9.3 into 2 strings),
+@@ -191,13 +203,6 @@ jobs:
+       with:
+         path: dmd
+         persist-credentials: false
+-    - name: Checkout druntime
+-      uses: actions/checkout@v2
+-      with:
+-        path: druntime
+-        repository: dlang/druntime
+-        ref: ${{ steps.base_branch.outputs.branch }}
+-        persist-credentials: false
+     - name: Checkout Phobos
+       uses: actions/checkout@v2
+       with:
+@@ -304,48 +309,115 @@ jobs:
+             exit 1
+         fi
+ 
++    # Restore or install dmc (and DM make)
++    - name: '[Windows] Restore dmc from cache'
++      id: cache-dmc
++      if: runner.os == 'Windows'
++      uses: actions/cache@v1
++      with:
++        path: ${{ github.workspace }}\tools\
++        key: ${{ matrix.os }}-dmc857
++
++    - name: '[Windows] Install dmc'
++      if: runner.os == 'Windows' && steps.cache-dmc.outputs.cache-hit != 'true'
++      shell: powershell
++      run: |
++        $url = "http://ftp.digitalmars.com/Digital_Mars_C++/Patch/dm857c.zip"
++        $sha256hash = "F51CDFEB45EAF4FFBF7ABF0FE9B3D548B202B4528401005C2C3192B00BC32367"
++        Write-Host ('Downloading {0} ...' -f $url)
++        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
++        $ProgressPreference = 'SilentlyContinue'
++        New-Item -ItemType directory -Path ${{ github.workspace }}\tools\
++        Invoke-WebRequest -Uri $url -OutFile '${{ github.workspace }}\tools\dmc.zip'
++        if ((Get-FileHash '${{ github.workspace }}\tools\dmc.zip' -Algorithm "SHA256").Hash -ne $sha256hash) {
++          exit 1
++        }
++        Expand-Archive '${{ github.workspace }}\tools\dmc.zip' -DestinationPath ${{ github.workspace }}\tools\
++
++    - name: '[Windows] Add VC toolset to PATH'
++      if: runner.os == 'Windows'
++      uses: ilammy/msvc-dev-cmd@v1
++
++    - name: '[Windows] Set environment variables'
++      if: runner.os == 'Windows'
++      shell: bash
++      run: |
++        echo "VISUAL_STUDIO_LIB_NOT_DM=$(which lib.exe)" >> $GITHUB_ENV
++        echo "HOST_DMD=${{ env.DC }}" >> $GITHUB_ENV
++        echo "${{ github.workspace }}/tools/dm/bin/" >> $GITHUB_PATH
++
+     ########################################
+     #    Building DMD, druntime, Phobos    #
+     ########################################
+     - name: '[Posix] Build compiler & standard library'
++      if: runner.os != 'Windows'
+       # By default, VMs have 2 processors available, hence the `-j2`:
+       # https://help.github.com/en/actions/reference/virtual-environments-for-github-hosted-runners#supported-runners-and-hardware-resources
+       run: |
+         # All hosts are 64 bits but let's be explicit
+-        ./dmd/src/build.d -j2 MODEL=64
+-        make -C druntime -f posix.mak -j2 MODEL=64
++        ./dmd/compiler/src/build.d -j2 MODEL=64
++        make -C dmd/druntime -f posix.mak -j2 MODEL=64
+         make -C phobos   -f posix.mak -j2 MODEL=64
+         # Both version can live side by side (they end up in a different directory)
+         # However, since clang does not provide a multilib package, only test 32 bits with g++
+         if [ ${{ matrix.compiler }} == "g++" ]; then
+-          ./dmd/src/build.d install -j2 MODEL=32
+-          make -C druntime -f posix.mak install -j2 MODEL=32
++          ./dmd/compiler/src/build.d install -j2 MODEL=32
++          make -C dmd/druntime -f posix.mak install -j2 MODEL=32
+           make -C phobos   -f posix.mak install -j2 MODEL=32
+         fi
+ 
++    - name: '[Windows] Build compiler & standard library'
++      if: runner.os == 'Windows'
++      shell: bash
++      run: |
++        dmd -run dmd/compiler/src/build.d -j2 MODEL=64
++        if [ $? -ne 0 ]; then return 1; fi
++        # Note: Only CC for druntime and AR for Phobos are required ATM,
++        # but providing all three to avoid surprise for future contributors
++        # Those should really be in the path, though.
++        cd dmd/druntime
++        make -f win64.mak
++        if [ $? -ne 0 ]; then return 1; fi
++        cd ../../phobos/
++        make -f win64.mak CC=cl.exe LD=link "AR=$VISUAL_STUDIO_LIB_NOT_DM"
++        if [ $? -ne 0 ]; then return 1; fi
++        cd ../
++
+     ########################################
+     #        Running the test suite        #
+     ########################################
+-    - name: Run C++ test suite
++    - name: '[Posix] Run C++ test suite'
++      if: runner.os != 'Windows'
+       env:
+         # Reset LD_LIBRARY_PATH when running the tests, so they use the newly built libphobos2.so.
+         LD_LIBRARY_PATH: ''
+       run: |
+-        ./dmd/test/run.d --environment runnable_cxx dshell/dll_cxx.d MODEL=64
++        ./dmd/compiler/test/run.d --environment runnable_cxx dshell/dll_cxx.d MODEL=64
+         if [ ${{ matrix.compiler }} == "g++" ]; then
+-          ./dmd/test/run.d clean
+-          ./dmd/test/run.d --environment runnable_cxx dshell/dll_cxx.d MODEL=32
++          ./dmd/compiler/test/run.d clean
++          ./dmd/compiler/test/run.d --environment runnable_cxx dshell/dll_cxx.d MODEL=32
+         fi
+ 
++    - name: '[Windows] Run C++ test suite'
++      if: runner.os == 'Windows'
++      shell: bash
++      run: |
++        cd dmd/druntime
++        make -f win64.mak test_stdcpp CC=cl.exe LD=link "AR=$VISUAL_STUDIO_LIB_NOT_DM"
++        if [ $? -ne 0 ]; then return 1; fi
++
+     ########################################
+     #      Run C++ frontend unittests      #
+     ########################################
+     - name: Run C++ frontend unittests
++      if: matrix.compiler == 'g++'
+       run: |
+-        ./dmd/src/build.d cxx-unittest MODEL=64
+-        if [ ${{ matrix.compiler }} == "g++" ]; then
+-          ./dmd/src/build.d cxx-unittest MODEL=32
+-        fi
++        ./dmd/compiler/src/build.d cxx-unittest MODEL=64
++
++    - name: Run C++ frontend unittests (32-bit)
++      if: matrix.compiler == 'g++'
++      run: |
++        ./dmd/compiler/src/build.d cxx-unittest MODEL=32
+ 
+     ########################################
+     #      Store generated artifacts       #
+diff --git a/ci/run.sh b/ci/run.sh
+index dff989f53a..26f8493f43 100755
+--- a/ci/run.sh
++++ b/ci/run.sh
+@@ -59,9 +59,9 @@ clone() {
+ # build dmd (incl. building and running the unittests), druntime, phobos
+ build() {
+     source ~/dlang/*/activate # activate host compiler, incl. setting `DMD`
+-    make -j$N -C src -f posix.mak MODEL=$MODEL HOST_DMD=$DMD DFLAGS="$CI_DFLAGS" BUILD=debug ENABLE_WARNINGS=1 unittest
+-    make -j$N -C src -f posix.mak MODEL=$MODEL HOST_DMD=$DMD DFLAGS="$CI_DFLAGS" ENABLE_RELEASE=1 ENABLE_WARNINGS=1 all
+-    make -j$N -C ../druntime -f posix.mak MODEL=$MODEL
++    make -j$N -C compiler/src -f posix.mak MODEL=$MODEL HOST_DMD=$DMD DFLAGS="$CI_DFLAGS" BUILD=debug ENABLE_WARNINGS=1 unittest
++    make -j$N -C compiler/src -f posix.mak MODEL=$MODEL HOST_DMD=$DMD DFLAGS="$CI_DFLAGS" ENABLE_RELEASE=1 ENABLE_WARNINGS=1 all
++    make -j$N -C druntime -f posix.mak MODEL=$MODEL
+     make -j$N -C ../phobos -f posix.mak MODEL=$MODEL
+     deactivate # deactivate host compiler
+ }
+@@ -75,8 +75,8 @@ rebuild() {
+     mkdir -p _${build_path}
+     cp $build_path/dmd _${build_path}/host_dmd
+     cp $build_path/dmd.conf _${build_path}
+-    make -j$N -C src -f posix.mak MODEL=$MODEL HOST_DMD=../_${build_path}/host_dmd clean
+-    make -j$N -C src -f posix.mak MODEL=$MODEL HOST_DMD=../_${build_path}/host_dmd DFLAGS="$CI_DFLAGS" ENABLE_RELEASE=${ENABLE_RELEASE:-1} ENABLE_WARNINGS=1 all
++    make -j$N -C compiler/src -f posix.mak MODEL=$MODEL HOST_DMD=../../_${build_path}/host_dmd clean
++    make -j$N -C compiler/src -f posix.mak MODEL=$MODEL HOST_DMD=../../_${build_path}/host_dmd DFLAGS="$CI_DFLAGS" ENABLE_RELEASE=${ENABLE_RELEASE:-1} ENABLE_WARNINGS=1 all
+ 
+     # compare binaries to test reproducible build
+     if [ $compare -eq 1 ]; then
+@@ -102,15 +102,15 @@ test() {
+ test_dmd() {
+     # test fewer compiler argument permutations for PRs to reduce CI load
+     if [ "$FULL_BUILD" == "true" ] && [ "$OS_NAME" == "linux"  ]; then
+-        make -j1 -C test MODEL=$MODEL N=$N # all ARGS by default
++        make -j1 -C compiler/test MODEL=$MODEL N=$N # all ARGS by default
+     else
+-        make -j1 -C test MODEL=$MODEL N=$N ARGS="-O -inline -release"
++        make -j1 -C compiler/test MODEL=$MODEL N=$N ARGS="-O -inline -release"
+     fi
+ }
+ 
+ # build and run druntime unit tests
+ test_druntime() {
+-    make -j$N -C ../druntime -f posix.mak MODEL=$MODEL unittest
++    make -j$N -C druntime -f posix.mak MODEL=$MODEL unittest
+ }
+ 
+ # build and run Phobos unit tests
+@@ -145,10 +145,10 @@ test_dub_package() {
+     deactivate
+ }
+ 
+-# clone druntime/phobos repos if not already available
++# clone phobos repos if not already available
+ setup_repos() {
+     local branch="$1"
+-    for proj in druntime phobos; do
++    for proj in phobos; do
+         if [ ! -d ../$proj ]; then
+             if [ $branch != master ] && [ $branch != stable ] &&
+                    ! git ls-remote --exit-code --heads https://github.com/dlang/$proj.git $branch > /dev/null; then
 diff --git a/compiler/src/build.d b/compiler/src/build.d
-index ebbe69456..ac9f52d85 100755
+index 0197547825..3f8ff8d4d0 100755
 --- a/compiler/src/build.d
 +++ b/compiler/src/build.d
 @@ -21,8 +21,9 @@ import std.parallelism : TaskPool, totalCPUs;
@@ -90,7 +452,7 @@ index ebbe69456..ac9f52d85 100755
          ).array)
  );
  
-@@ -467,7 +468,7 @@ alias dmdExe = makeRuleWithArgs!((MethodInitializer!BuildRule builder, BuildRule
+@@ -490,7 +491,7 @@ alias dmdExe = makeRuleWithArgs!((MethodInitializer!BuildRule builder, BuildRule
              ].chain(extraFlags, platformArgs, flags["DFLAGS"],
                  // source files need to have relative paths in order for the code coverage
                  // .lst files to be named properly for CodeCov to find them
@@ -99,7 +461,7 @@ index ebbe69456..ac9f52d85 100755
              ).array);
  });
  
-@@ -564,9 +565,9 @@ alias dmdPGO = makeRule!((builder, rule) {
+@@ -587,9 +588,9 @@ alias dmdPGO = makeRule!((builder, rule) {
              // Run phobos unittests
              //TODO makefiles
              //generated/linux/release/64/unittest/test_runner builds the unittests without running them.
@@ -111,7 +473,7 @@ index ebbe69456..ac9f52d85 100755
                  stderr.writeln("Phobos Tests failed! This will not end the PGO build because some data may have been gathered");
          }));
      alias finalDataMerge = methodInit!(BuildRule, (rundBuilder, rundRule) => rundBuilder
-@@ -784,7 +785,7 @@ alias toolsRepo = makeRule!((builder, rule) => builder
+@@ -807,7 +808,7 @@ alias toolsRepo = makeRule!((builder, rule) => builder
          auto toolsDir = env["TOOLS_DIR"];
          version(Win32)
              // Win32-git seems to confuse C:\... as a relative path
@@ -120,7 +482,7 @@ index ebbe69456..ac9f52d85 100755
          run([env["GIT"], "clone", "--depth=1", env["GIT_HOME"] ~ "/tools", toolsDir]);
      })
  );
-@@ -870,7 +871,7 @@ alias man = makeRule!((builder, rule) {
+@@ -893,7 +894,7 @@ alias man = makeRule!((builder, rule) {
      alias genMan = methodInit!(BuildRule, (genManBuilder, genManRule) => genManBuilder
          .target(env["G"].buildPath("gen_man"))
          .sources([
@@ -129,7 +491,7 @@ index ebbe69456..ac9f52d85 100755
              env["D"].buildPath("cli.d")])
          .command([
              env["HOST_DMD_RUN"],
-@@ -897,7 +898,7 @@ alias man = makeRule!((builder, rule) {
+@@ -920,7 +921,7 @@ alias man = makeRule!((builder, rule) {
          "man1/dumpobj.1 man1/obj2asm.1 man5/dmd.conf.5".split
          .map!(e => methodInit!(BuildRule, (manFileBuilder, manFileRule) => manFileBuilder
              .target(genManDir.buildPath(e))
@@ -138,7 +500,7 @@ index ebbe69456..ac9f52d85 100755
              .deps([directoryRule(manFileRule.target.dirName)])
              .commandFunction(() => copyAndTouch(manFileRule.sources[0], manFileRule.target))
              .msg("copy '%s' to '%s'".format(manFileRule.sources[0], manFileRule.target))
-@@ -1046,17 +1047,17 @@ alias install = makeRule!((builder, rule) {
+@@ -1069,17 +1070,17 @@ alias install = makeRule!((builder, rule) {
          installRelativeFiles(env["INSTALL"].buildPath(env["OS"], bin), dmdExeFile.dirName, dmdExeFile.only, octal!755);
  
          version (Windows)
@@ -159,7 +521,7 @@ index ebbe69456..ac9f52d85 100755
  
          copyAndTouch(confPath, buildPath(env["INSTALL"], scPath));
  
-@@ -1235,9 +1236,9 @@ void parseEnvironment()
+@@ -1258,9 +1259,9 @@ void parseEnvironment()
      else
          enum installPref = "..";
  
@@ -171,7 +533,7 @@ index ebbe69456..ac9f52d85 100755
      env.setDefault("DOCDIR", srcDir);
      env.setDefault("DOC_OUTPUT_DIR", env["DOCDIR"]);
  
-@@ -1246,10 +1247,10 @@ void parseEnvironment()
+@@ -1269,10 +1270,10 @@ void parseEnvironment()
      env["COMMON"] = d.buildPath("common");
      env["ROOT"] = d.buildPath("root");
      env["EX"] = srcDir.buildPath("examples");
@@ -184,7 +546,7 @@ index ebbe69456..ac9f52d85 100755
  
      auto hostDmdDef = env.getDefault("HOST_DMD", null);
      if (hostDmdDef.length == 0)
-@@ -2220,7 +2221,7 @@ class BuildException : Exception
+@@ -2243,7 +2244,7 @@ class BuildException : Exception
  The directory where all run commands are executed from.  All relative file paths
  in a `run` command must be relative to `runDir`.
  */
@@ -194,7 +556,7 @@ index ebbe69456..ac9f52d85 100755
  /**
  Run a command which may not succeed and optionally log the invocation.
 diff --git a/compiler/src/posix.mak b/compiler/src/posix.mak
-index 552ac2b17..6a3d19465 100644
+index 552ac2b177..6a3d194654 100644
 --- a/compiler/src/posix.mak
 +++ b/compiler/src/posix.mak
 @@ -68,7 +68,7 @@ endif
@@ -207,7 +569,7 @@ index 552ac2b17..6a3d19465 100644
  $(shell mkdir -p $G)
  
 diff --git a/compiler/src/win32.mak b/compiler/src/win32.mak
-index 9faccf743..acbe15633 100644
+index 9faccf743f..acbe15633a 100644
 --- a/compiler/src/win32.mak
 +++ b/compiler/src/win32.mak
 @@ -49,7 +49,7 @@ OS=windows
@@ -220,7 +582,7 @@ index 9faccf743..acbe15633 100644
  
  ##### Tools
 diff --git a/compiler/src/win64.mak b/compiler/src/win64.mak
-index 35452ccd3..9fdeb8756 100644
+index 35452ccd37..9fdeb87569 100644
 --- a/compiler/src/win64.mak
 +++ b/compiler/src/win64.mak
 @@ -17,7 +17,7 @@ OS=windows
@@ -233,7 +595,7 @@ index 35452ccd3..9fdeb8756 100644
  DEPENDENCIES=vcbuild\msvc-lib.exe $G
  
 diff --git a/compiler/test/Makefile b/compiler/test/Makefile
-index 25146ed95..28fe3871a 100644
+index 25146ed955..28fe3871aa 100644
 --- a/compiler/test/Makefile
 +++ b/compiler/test/Makefile
 @@ -48,31 +48,31 @@ ifeq ($(findstring win,$(OS)),win)
@@ -283,7 +645,7 @@ index 25146ed95..28fe3871a 100644
      SHARED=$(if $(findstring $(OS),linux freebsd),1,)
      DFLAGS=-I$(DRUNTIME_PATH)/import -I$(PHOBOS_PATH) -L-L$(PHOBOS_PATH)/generated/$(OS)/$(BUILD)/$(MODEL)
 diff --git a/compiler/test/compilable/extra-files/json2.json b/compiler/test/compilable/extra-files/json2.json
-index 54cc98b21..e4ee50e71 100644
+index 54cc98b213..e4ee50e714 100644
 --- a/compiler/test/compilable/extra-files/json2.json
 +++ b/compiler/test/compilable/extra-files/json2.json
 @@ -9,7 +9,7 @@
@@ -296,7 +658,7 @@ index 54cc98b21..e4ee50e71 100644
          "libName": "VALUE_REMOVED_FOR_TEST",
          "libraryFiles": [
 diff --git a/compiler/test/dshell/test_shared.d b/compiler/test/dshell/test_shared.d
-index be604a81e..daf053fb2 100644
+index be604a81e4..daf053fb22 100644
 --- a/compiler/test/dshell/test_shared.d
 +++ b/compiler/test/dshell/test_shared.d
 @@ -10,7 +10,7 @@ int main()
@@ -309,7 +671,7 @@ index be604a81e..daf053fb2 100644
  
      return 0;
 diff --git a/compiler/test/dub_package/retrieveScope.d b/compiler/test/dub_package/retrieveScope.d
-index e04759a50..2bab27699 100755
+index e04759a502..2bab27699f 100755
 --- a/compiler/test/dub_package/retrieveScope.d
 +++ b/compiler/test/dub_package/retrieveScope.d
 @@ -61,10 +61,10 @@ private struct CallbackHelper {
@@ -326,7 +688,7 @@ index e04759a50..2bab27699 100755
      /* comment for error output in parsing & semantic */
      diagnosticHandler = (const ref Loc location,
 diff --git a/compiler/test/run.d b/compiler/test/run.d
-index c86f9221a..e8d81d087 100755
+index c86f9221a3..e8d81d0873 100755
 --- a/compiler/test/run.d
 +++ b/compiler/test/run.d
 @@ -540,7 +540,7 @@ string[string] getEnvironment()
@@ -339,7 +701,7 @@ index c86f9221a..e8d81d087 100755
          // default to PIC, use PIC=1/0 to en-/disable PIC.
          // Note that shared libraries and C files are always compiled with PIC.
 diff --git a/compiler/test/tools/paths.d b/compiler/test/tools/paths.d
-index 6bcb70ed4..acb525bda 100644
+index 6bcb70ed43..acb525bda7 100644
 --- a/compiler/test/tools/paths.d
 +++ b/compiler/test/tools/paths.d
 @@ -30,12 +30,13 @@ else version (SunOS)
@@ -359,7 +721,7 @@ index 6bcb70ed4..acb525bda 100644
  string build()
  {
 diff --git a/compiler/test/tools/unit_test_runner.d b/compiler/test/tools/unit_test_runner.d
-index 43f77e2a1..dd902ea92 100755
+index 43f77e2a11..dd902ea928 100755
 --- a/compiler/test/tools/unit_test_runner.d
 +++ b/compiler/test/tools/unit_test_runner.d
 @@ -239,7 +239,7 @@ void writeRunnerFile(Range)(Range moduleNames, string path, string filter)
@@ -390,7 +752,7 @@ index 43f77e2a1..dd902ea92 100755
      {
          enum msg = "Failed to compile the `unit` test executable! (exit code %d)
 diff --git a/compiler/test/unit/support.d b/compiler/test/unit/support.d
-index ddaf9fe20..5751ff923 100644
+index ddaf9fe20a..5751ff9239 100644
 --- a/compiler/test/unit/support.d
 +++ b/compiler/test/unit/support.d
 @@ -20,8 +20,8 @@ string[] defaultImportPaths()
@@ -404,8 +766,19 @@ index ddaf9fe20..5751ff923 100644
      enum phobosDir = dlangDir.buildPath("phobos");
  
      return [
+diff --git a/druntime/benchmark/gcbench/vdparser.extra/vdc/ast/tmpl.d b/druntime/benchmark/gcbench/vdparser.extra/vdc/ast/tmpl.d
+index e3aade0610..8e7f3b8737 100644
+--- a/druntime/benchmark/gcbench/vdparser.extra/vdc/ast/tmpl.d
++++ b/druntime/benchmark/gcbench/vdparser.extra/vdc/ast/tmpl.d
+@@ -590,4 +590,4 @@ ParameterList createTemplateParameterList(ArgMatch[] vargs)
+         pl.addMember(pd);
+     }
+     return pl;
+-}
+\ No newline at end of file
++}
 diff --git a/druntime/posix.mak b/druntime/posix.mak
-index 60554d8cd..3ab24a64b 100644
+index 60554d8cd1..3ab24a64b5 100644
 --- a/druntime/posix.mak
 +++ b/druntime/posix.mak
 @@ -5,9 +5,9 @@
@@ -449,8 +822,182 @@ index 60554d8cd..3ab24a64b 100644
  ROOT = $(ROOT_OF_THEM_ALL)/$(OS)/$(BUILD)/$(MODEL)
  OBJDIR=obj/$(OS)/$(BUILD)/$(MODEL)
  DRUNTIME_BASE=druntime-$(OS)$(MODEL)
+diff --git a/druntime/src/core/int128.d b/druntime/src/core/int128.d
+index e4326fd54c..46eb9b2755 100644
+--- a/druntime/src/core/int128.d
++++ b/druntime/src/core/int128.d
+@@ -943,5 +943,3 @@ unittest
+     assert(rol(C7_9, 1) == rol1(C7_9));
+     assert(ror(C7_9, 1) == ror1(C7_9));
+ }
+-
+-
+diff --git a/druntime/src/core/sys/darwin/mach/getsect.d b/druntime/src/core/sys/darwin/mach/getsect.d
+index fd1a8e4ea3..dc42a2dc45 100644
+--- a/druntime/src/core/sys/darwin/mach/getsect.d
++++ b/druntime/src/core/sys/darwin/mach/getsect.d
+@@ -468,4 +468,3 @@ const(section)* getsectbynamefromheaderwithswap_64(
+     const scope char* section,
+     int fSwap
+ );
+-
+diff --git a/druntime/src/core/sys/dragonflybsd/string.d b/druntime/src/core/sys/dragonflybsd/string.d
+index 4b8422748b..1a85ba606a 100644
+--- a/druntime/src/core/sys/dragonflybsd/string.d
++++ b/druntime/src/core/sys/dragonflybsd/string.d
+@@ -19,4 +19,3 @@ static if (__BSD_VISIBLE)
+ {
+     pure void* memmem(return scope const void* haystack, size_t haystacklen, scope const void* needle, size_t needlelen);
+ }
+-
+diff --git a/druntime/src/core/sys/linux/sys/time.d b/druntime/src/core/sys/linux/sys/time.d
+index 6ea626ed39..4b56229687 100644
+--- a/druntime/src/core/sys/linux/sys/time.d
++++ b/druntime/src/core/sys/linux/sys/time.d
+@@ -65,4 +65,3 @@ extern (D) pure @safe @nogc nothrow {
+     }
+ 
+ }
+-
+diff --git a/druntime/src/core/sys/linux/sys/xattr.d b/druntime/src/core/sys/linux/sys/xattr.d
+index 2f8d3f376f..6446ff8b9a 100644
+--- a/druntime/src/core/sys/linux/sys/xattr.d
++++ b/druntime/src/core/sys/linux/sys/xattr.d
+@@ -66,4 +66,3 @@ ssize_t flistxattr (int __fd, char *list, size_t size);
+ int removexattr (const scope char *path, const scope char *name);
+ int lremovexattr (const scope char *path, const scope char *name);
+ int fremovexattr (int fd, const scope char *name);
+-
+diff --git a/druntime/src/core/sys/linux/tipc.d b/druntime/src/core/sys/linux/tipc.d
+index 3246e62ec0..4d5d886269 100644
+--- a/druntime/src/core/sys/linux/tipc.d
++++ b/druntime/src/core/sys/linux/tipc.d
+@@ -208,4 +208,3 @@ enum: int
+         TIPC_DEST_DROPPABLE = 129,
+         TIPC_CONN_TIMEOUT   = 130,
+ }
+-
+diff --git a/druntime/src/core/sys/posix/sys/select.d b/druntime/src/core/sys/posix/sys/select.d
+index 2a659c30dc..925976d3e3 100644
+--- a/druntime/src/core/sys/posix/sys/select.d
++++ b/druntime/src/core/sys/posix/sys/select.d
+@@ -608,4 +608,3 @@ pure unittest
+         assert(!FD_ISSET(i, &fd));
+     }
+ }
+-
+diff --git a/druntime/src/core/sys/posix/ucontext.d b/druntime/src/core/sys/posix/ucontext.d
+index 20297f50b9..e8c2f87bbd 100644
+--- a/druntime/src/core/sys/posix/ucontext.d
++++ b/druntime/src/core/sys/posix/ucontext.d
+@@ -1628,4 +1628,3 @@ version (Solaris)
+     int addrtosymstr(uintptr_t, char*, int);
+     int printstack(int);
+ }
+-
+diff --git a/druntime/src/core/sys/solaris/sys/priocntl.d b/druntime/src/core/sys/solaris/sys/priocntl.d
+index bfbf3ee2ab..c56be3b00f 100644
+--- a/druntime/src/core/sys/solaris/sys/priocntl.d
++++ b/druntime/src/core/sys/solaris/sys/priocntl.d
+@@ -113,4 +113,3 @@ struct pcadmin_t
+     id_t    pc_cid;
+     caddr_t pc_cladmin;
+ }
+-
+diff --git a/druntime/src/core/sys/solaris/sys/procset.d b/druntime/src/core/sys/solaris/sys/procset.d
+index 43fa9978af..8bd9115700 100644
+--- a/druntime/src/core/sys/solaris/sys/procset.d
++++ b/druntime/src/core/sys/solaris/sys/procset.d
+@@ -50,4 +50,3 @@ void setprocset(ref procset_t psp, idop_t op, idtype_t ltype, id_t lid, idtype_t
+     psp.p_ridtype = rtype;
+     psp.p_rid = rid;
+ }
+-
+diff --git a/druntime/src/core/sys/windows/cguid.d b/druntime/src/core/sys/windows/cguid.d
+index 0afbc42e8b..d0a8fb9f08 100644
+--- a/druntime/src/core/sys/windows/cguid.d
++++ b/druntime/src/core/sys/windows/cguid.d
+@@ -10,4 +10,3 @@ module core.sys.windows.cguid;
+ version (Windows):
+ 
+ import core.sys.windows.basetyps;
+-
+diff --git a/druntime/src/core/sys/windows/ntsecpkg.d b/druntime/src/core/sys/windows/ntsecpkg.d
+index d4c93d7b57..d8c5e95edb 100644
+--- a/druntime/src/core/sys/windows/ntsecpkg.d
++++ b/druntime/src/core/sys/windows/ntsecpkg.d
+@@ -444,4 +444,3 @@ alias NTSTATUS function(ULONG, PULONG,
+  PSECPKG_FUNCTION_TABLE *, PULONG) SpLsaModeInitializeFn;
+ alias NTSTATUS function(ULONG, PULONG,
+  PSECPKG_USER_FUNCTION_TABLE *, PULONG) SpUserModeInitializeFn;
+-
+diff --git a/druntime/src/core/sys/windows/olectlid.d b/druntime/src/core/sys/windows/olectlid.d
+index 8bbe657134..b58c14ae1f 100644
+--- a/druntime/src/core/sys/windows/olectlid.d
++++ b/druntime/src/core/sys/windows/olectlid.d
+@@ -10,4 +10,3 @@ module core.sys.windows.olectlid;
+ version (Windows):
+ 
+ import core.sys.windows.basetyps;
+-
+diff --git a/druntime/src/core/sys/windows/shlguid.d b/druntime/src/core/sys/windows/shlguid.d
+index 1c0c98fc07..e0c1af1045 100644
+--- a/druntime/src/core/sys/windows/shlguid.d
++++ b/druntime/src/core/sys/windows/shlguid.d
+@@ -16,4 +16,3 @@ import core.sys.windows.basetyps, core.sys.windows.w32api;
+ 
+ // I think this is just a helper macro for other win32 headers?
+ //MACRO #define DEFINE_SHLGUID(n,l,w1,w2) DEFINE_GUID(n,l,w1,w2,0xC0,0,0,0,0,0,0,0x46)
+-
+diff --git a/druntime/src/core/sys/windows/sspi.d b/druntime/src/core/sys/windows/sspi.d
+index 07a259622d..21e982daa8 100644
+--- a/druntime/src/core/sys/windows/sspi.d
++++ b/druntime/src/core/sys/windows/sspi.d
+@@ -380,4 +380,3 @@ version (Unicode) {
+     alias QUERY_SECURITY_PACKAGE_INFO_FN_A QUERY_SECURITY_PACKAGE_INFO_FN;
+     alias INIT_SECURITY_INTERFACE_A INIT_SECURITY_INTERFACE;
+ }
+-
+diff --git a/druntime/src/rt/dylib_fixes.c b/druntime/src/rt/dylib_fixes.c
+index e484fed7fb..c1391b8538 100644
+--- a/druntime/src/rt/dylib_fixes.c
++++ b/druntime/src/rt/dylib_fixes.c
+@@ -25,4 +25,3 @@ __attribute__((destructor)) static void finalizer ()
+ {
+     rt_term();
+ }
+-
+diff --git a/druntime/test/gc/nocollect.d b/druntime/test/gc/nocollect.d
+index 5df1483a28..64ed222113 100644
+--- a/druntime/test/gc/nocollect.d
++++ b/druntime/test/gc/nocollect.d
+@@ -12,4 +12,4 @@ void main()
+ 
+     stats = GC.profileStats();
+     assert(stats.numCollections == 0);
+-}
+\ No newline at end of file
++}
+diff --git a/druntime/test/init_fini/win64.mak b/druntime/test/init_fini/win64.mak
+index 160e8c7c68..b020fec9f6 100644
+--- a/druntime/test/init_fini/win64.mak
++++ b/druntime/test/init_fini/win64.mak
+@@ -10,4 +10,3 @@ custom_gc:
+ 	$(DMD) -m$(MODEL) -conf= -Isrc -defaultlib=$(DRUNTIMELIB) test\init_fini\src\custom_gc.d
+ 	custom_gc.exe
+ 	del custom_gc.exe custom_gc.obj
+-
+diff --git a/druntime/test/uuid/win64.mak b/druntime/test/uuid/win64.mak
+index eb5134310c..1939692629 100644
+--- a/druntime/test/uuid/win64.mak
++++ b/druntime/test/uuid/win64.mak
+@@ -7,4 +7,3 @@ DRUNTIMELIB=druntime64.lib
+ test:
+ 	$(DMD) -m$(MODEL) -conf= -Isrc -defaultlib=$(DRUNTIMELIB) test\uuid\test.d uuid.lib
+ 	del test.exe test.obj
+-
 diff --git a/druntime/win32.mak b/druntime/win32.mak
-index 68a142348..960d62c43 100644
+index 68a1423482..960d62c436 100644
 --- a/druntime/win32.mak
 +++ b/druntime/win32.mak
 @@ -4,10 +4,10 @@
@@ -467,7 +1014,7 @@ index 68a142348..960d62c43 100644
  # Used for running MASM assembler on .asm files
  CC=dmc
 diff --git a/druntime/win64.mak b/druntime/win64.mak
-index 9d118884b..d1a7c7dc3 100644
+index 9d118884b3..d1a7c7dc3f 100644
 --- a/druntime/win64.mak
 +++ b/druntime/win64.mak
 @@ -9,13 +9,13 @@ MODEL=64
@@ -487,7 +1034,7 @@ index 9d118884b..d1a7c7dc3 100644
  DOCDIR=doc
  IMPDIR=import
 diff --git a/posix.mak b/posix.mak
-index f451a3008..59f765f29 100644
+index f451a30082..59f765f295 100644
 --- a/posix.mak
 +++ b/posix.mak
 @@ -1,18 +1,19 @@
@@ -572,7 +1119,7 @@ index f451a3008..59f765f29 100644
  .DELETE_ON_ERROR: # GNU Make directive (delete output files on error)
  
 diff --git a/win32.mak b/win32.mak
-index 04c280cc6..d46366f53 100644
+index 04c280cc6f..d46366f530 100644
 --- a/win32.mak
 +++ b/win32.mak
 @@ -1,20 +1,20 @@
@@ -605,7 +1152,7 @@ index 04c280cc6..d46366f53 100644
 -	cd ..
 +	cd ..\..
 diff --git a/win64.mak b/win64.mak
-index 2e1127364..1bca74b0c 100644
+index 2e1127364b..1bca74b0c7 100644
 --- a/win64.mak
 +++ b/win64.mak
 @@ -5,5 +5,5 @@
