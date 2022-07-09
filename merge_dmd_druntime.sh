@@ -15,17 +15,8 @@ then
     # Tag v2.100.1 release and merge stable->master.
     # This is borrowed from the dlang release script, we'll likely just
     # run the release script proper instead of doing this here.
-    D_VER=v2.100.1
     for repo in dmd druntime phobos tools installer dlang.org; do
-	git -C $workdir/$repo checkout stable
-    done
-    echo $D_VER > $workdir/dmd/VERSION
-    git -C $workdir/dmd add VERSION
-    git -C $workdir/dmd commit -m "bump VERSION to $D_VER"
-    for repo in dmd druntime phobos tools installer dlang.org; do
-	git -C $workdir/$repo tag -sm $D_VER $D_VER
-	git -C $workdir/$repo checkout master
-	git -C $workdir/$repo -c core.editor=/bin/true merge stable master --no-ff || true
+	git -C $workdir/$repo -c core.editor=/bin/true merge origin/stable master --no-ff || true
     done
     patch -d $workdir/dmd -p1 -i ../../patches/merge_stable/0001-Merge-remote-tracking-branch-stable.patch
     git -C $workdir/dmd add src/dmd/*.d
@@ -48,7 +39,7 @@ then
     git -C $workdir/dmd remote add -f --no-tags druntime https://github.com/dlang/druntime
     git -C $workdir/dmd merge -s ours --no-commit --allow-unrelated-histories druntime/master
     git -C $workdir/dmd read-tree --prefix=druntime/ -u druntime/master
-    git -C $workdir/dmd commit -m "Merge druntime repository into master"
+    git -C $workdir/dmd commit -m "Merge dlang/druntime repository into dlang/dmd"
 
     ##
     # ??? Is this necessary? doesn't seem to be.
@@ -58,7 +49,18 @@ then
     # Post-merge fix-ups
     git -C $workdir/dmd checkout master
     git -C $workdir/dmd am ../../patches/master/0001-Fix-build-script-paths-to-work-with-new-merged-repos.patch
+    git -C $workdir/dmd am ../../patches/master/0001-src-posix.mak-Add-proxy.patch
+    git -C $workdir/dmd am ../../patches/master/0002-src-posix.mak-Use-QUIET.patch
+    git -C $workdir/dmd am ../../patches/master/0003-src-README-Initial-commit.patch
+    git -C $workdir/dmd am ../../patches/master/0004-src-osmodel.mak-Add-redirect.patch
+    git -C $workdir/dmd am ../../patches/master/0005-dub.sdl-Update-paths.patch
+    git -C $workdir/dmd am ../../patches/master/0006-dub.sdl-Add-explicit-importPaths.patch
+
     git -C $workdir/phobos am ../../patches/phobos/0001-Fix-build-script-paths-to-work-with-new-merged-dmd-d.patch
+
+    git -C $workdir/dlang.org am ../../patches/dlang.org/0001-posix.mak-Update-src-paths-for-DMD-Druntime-monorepo.patch
+    git -C $workdir/dlang.org am ../../patches/dlang.org/0002-posix.mak-Update-docs-paths-for-DMD-Druntime-monorep.patch
+    git -C $workdir/dlang.org am ../../patches/dlang.org/0003-posix.mak-Disable-parallel-GC-in-DPL_DOCS.patch
 
     ##
     # This is the first revision with a working merged structure!

@@ -2,7 +2,7 @@
  1 file changed, 5 deletions(-)
 
 diff --git a/src/dmd/expressionsem.d b/src/dmd/expressionsem.d
-index a320ace26..ebc4fee9b 100644
+index e7e2c96e3..ebc4fee9b 100644
 --- a/src/dmd/expressionsem.d
 +++ b/src/dmd/expressionsem.d
 @@ -2046,7 +2046,6 @@ private bool functionParameters(const ref Loc loc, Scope* sc,
@@ -20,7 +20,7 @@ index a320ace26..ebc4fee9b 100644
 -=======
 -            else if (!(pStc & STC.return_) &&
 -                ((global.params.useDIP1000 == FeatureState.enabled) || !(p.storageClass & STC.scopeinferred)))
-->>>>>>> stable
+->>>>>>> origin/stable
              {
                  /* Argument value cannot escape from the called function.
                   */
