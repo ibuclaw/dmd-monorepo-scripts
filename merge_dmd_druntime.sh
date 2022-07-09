@@ -12,17 +12,6 @@ then
     done
 
     ##
-    # Tag v2.100.1 release and merge stable->master.
-    # This is borrowed from the dlang release script, we'll likely just
-    # run the release script proper instead of doing this here.
-    for repo in dmd druntime phobos tools installer dlang.org; do
-	git -C $workdir/$repo -c core.editor=/bin/true merge origin/stable master --no-ff || true
-    done
-    patch -d $workdir/dmd -p1 -i ../../patches/merge_stable/0001-Merge-remote-tracking-branch-stable.patch
-    git -C $workdir/dmd add src/dmd/*.d
-    git -C $workdir/dmd -c core.editor=/bin/true merge --continue
-
-    ##
     # This is the last revision before we merged dmd and druntime!
     git -C $workdir/dmd tag -sm last-separate-dmd-druntime last-separate-dmd-druntime
 
@@ -61,6 +50,8 @@ then
     git -C $workdir/dlang.org am ../../patches/dlang.org/0001-posix.mak-Update-src-paths-for-DMD-Druntime-monorepo.patch
     git -C $workdir/dlang.org am ../../patches/dlang.org/0002-posix.mak-Update-docs-paths-for-DMD-Druntime-monorep.patch
     git -C $workdir/dlang.org am ../../patches/dlang.org/0003-posix.mak-Disable-parallel-GC-in-DPL_DOCS.patch
+
+    git -C $workdir/dlang.org am ../../patches/ci/0001-Fix-build-script-paths-to-work-with-new-merged-repos.patch
 
     ##
     # This is the first revision with a working merged structure!

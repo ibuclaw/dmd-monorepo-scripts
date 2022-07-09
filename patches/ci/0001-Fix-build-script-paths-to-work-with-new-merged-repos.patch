@@ -1,0 +1,131 @@
+From a7c103c1713012dc7dd1c7d48a899460bc5ed272 Mon Sep 17 00:00:00 2001
+From: Iain Buclaw <ibuclaw@gdcproject.org>
+Date: Sat, 9 Jul 2022 18:41:39 +0200
+Subject: [PATCH] Fix build script paths to work with new merged repository
+ structure
+
+---
+ buildkite.sh                    |  2 --
+ buildkite/build_distribution.sh |  8 +++++---
+ buildkite/build_project.sh      | 11 ++++-------
+ buildkite/clone_repositories.sh |  2 +-
+ 4 files changed, 10 insertions(+), 13 deletions(-)
+
+diff --git a/buildkite.sh b/buildkite.sh
+index db29137..99a2366 100755
+--- a/buildkite.sh
++++ b/buildkite.sh
+@@ -73,7 +73,6 @@ EOF
+ 
+ case "${BUILDKITE_REPO:-x}" in
+     "https://github.com/dlang/dmd.git" | \
+-    "https://github.com/dlang/druntime.git" | \
+     "https://github.com/dlang/phobos.git")
+ 
+ cat << EOF
+@@ -128,7 +127,6 @@ projects=(
+     #"d-language-server/dls" # 1m55s
+     "eBay/tsv-utils" # 1m41s
+     "dlang-community/D-Scanner" # 1m40s
+-    "dlang/druntime" # 1m18s
+     "dlang-tour/core" # 1m17s
+     "d-widget-toolkit/dwt" # 1m16s
+     "rejectedsoftware/diet-ng" # 56s
+diff --git a/buildkite/build_distribution.sh b/buildkite/build_distribution.sh
+index 3d87a87..705a040 100755
+--- a/buildkite/build_distribution.sh
++++ b/buildkite/build_distribution.sh
+@@ -11,9 +11,11 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ "$DIR/clone_repositories.sh"
+ 
+ echo "--- Building dmd"
+-dmd/src/bootstrap.sh
++dmd/compiler/src/bootstrap.sh
++echo "--- Building druntime"
++make -C dmd/druntime -f posix.mak --jobs=4
+ 
+-for dir in druntime phobos ; do
++for dir in phobos ; do
+     echo "--- Building $dir"
+     make -C $dir -f posix.mak --jobs=4
+ done
+@@ -31,7 +33,7 @@ make -C tools -f posix.mak RELEASE=1 --jobs=4
+ echo "--- Building distribution"
+ mkdir -p distribution/{bin,imports,libs}
+ cp --archive --link dmd/generated/linux/release/64/dmd dub/bin/dub tools/generated/linux/64/rdmd distribution/bin/
+-cp --archive --link phobos/etc phobos/std druntime/import/* distribution/imports/
++cp --archive --link phobos/etc phobos/std dmd/druntime/import/* distribution/imports/
+ cp --archive --link phobos/generated/linux/release/64/libphobos2.{a,so,so*[!o]} distribution/libs/
+ echo '[Environment]' >> distribution/bin/dmd.conf
+ echo 'DFLAGS=-I%@P%/../imports -L-L%@P%/../libs -L--export-dynamic -L--export-dynamic -fPIC' >> distribution/bin/dmd.conf
+diff --git a/buildkite/build_project.sh b/buildkite/build_project.sh
+index 4e2a9e9..10f5e0e 100755
+--- a/buildkite/build_project.sh
++++ b/buildkite/build_project.sh
+@@ -57,7 +57,6 @@ echo "--- Checking ${REPO_FULL_NAME} for a core repository and branch merging wi
+ # Don't checkout a tagged version of the core repositories like Phobos
+ case "$REPO_FULL_NAME" in
+     "dlang/dmd" | \
+-    "dlang/druntime" | \
+     "dlang/phobos" | \
+     "dlang/phobos+no-autodecode" | \
+     "dlang/tools" | \
+@@ -73,7 +72,6 @@ case "$REPO_FULL_NAME" in
+             # clone_repositories.sh will clone them together
+             case "$REPO_FULL_NAME" in
+                 "dlang/dmd" | \
+-                "dlang/druntime" | \
+                 "dlang/phobos" | \
+                 "dlang/phobos+no-autodecode")
+                 ref_to_use="IS-ALREADY-CHECKED-OUT"
+@@ -288,7 +286,6 @@ case "$REPO_FULL_NAME" in
+         ;;
+ 
+     dlang/dmd | \
+-    dlang/druntime | \
+     dlang/phobos)
+         "$DIR"/clone_repositories.sh
+         echo "--- Launching test for $REPO_FULL_NAME"
+@@ -298,11 +295,11 @@ case "$REPO_FULL_NAME" in
+         export TMPDIR="$TMP"
+         rm -rf "$TMP" && mkdir -p "$TMP"
+         # patch makefile which requires gdb 8 - see https://github.com/dlang/ci/pull/301
+-        sed "s/TESTS+=rt_trap_exceptions_drt_gdb//" -i druntime/test/exceptions/Makefile
++        sed "s/TESTS+=rt_trap_exceptions_drt_gdb//" -i dmd/druntime/test/exceptions/Makefile
+         # build druntime for phobos first, s.t. it doesn't fault when copying the druntime files in parallel
+         # see https://github.com/dlang/ci/pull/340
+         if [ "$REPO_FULL_NAME" == "dlang/phobos" ] ; then
+-            make -C druntime -j2 -f posix.mak
++            make -C dmd/druntime -j2 -f posix.mak
+         fi
+         cd "$(basename "${REPO_FULL_NAME}")"&& make -f posix.mak clean && make -f posix.mak -j2 buildkite-test
+         rm -rf "$TMP"
+@@ -318,10 +315,10 @@ case "$REPO_FULL_NAME" in
+         export NO_AUTODECODE=1
+         rm -rf "$TMP" && mkdir -p "$TMP"
+         # patch makefile which requires gdb 8 - see https://github.com/dlang/ci/pull/301
+-        sed "s/TESTS+=rt_trap_exceptions_drt_gdb//" -i druntime/test/exceptions/Makefile
++        sed "s/TESTS+=rt_trap_exceptions_drt_gdb//" -i dmd/druntime/test/exceptions/Makefile
+         # build druntime for phobos first, s.t. it doesn't fault when copying the druntime files in parallel
+         # see https://github.com/dlang/ci/pull/340
+-        make -C druntime -j2 -f posix.mak
++        make -C dmd/druntime -j2 -f posix.mak
+         cd phobos && make -f posix.mak clean && make -f posix.mak -j2 autodecode-test
+         rm -rf "$TMP"
+         ;;
+diff --git a/buildkite/clone_repositories.sh b/buildkite/clone_repositories.sh
+index 22e75f2..216a20a 100755
+--- a/buildkite/clone_repositories.sh
++++ b/buildkite/clone_repositories.sh
+@@ -11,7 +11,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+ origin_repo="$(echo "$BUILDKITE_REPO" | sed "s/.*\/\([^\]*\)[.]git/\1/")"
+ 
+ echo "--- Cloning all core repositories"
+-repositories=(dmd druntime phobos tools dub)
++repositories=(dmd phobos tools dub)
+ 
+ # For PRs to dlang/ci, clone itself too, s.t. the code below can be tested
+ if [ "${REPO_FULL_NAME:-none}" == "dlang/ci" ] ; then
+-- 
+2.34.1
+
