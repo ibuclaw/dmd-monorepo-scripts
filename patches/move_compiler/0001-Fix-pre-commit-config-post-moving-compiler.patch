@@ -1,0 +1,35 @@
+From c838f58d798fdcd16af5847391f07772d0e0b3ca Mon Sep 17 00:00:00 2001
+From: Iain Buclaw <ibuclaw@gdcproject.org>
+Date: Sat, 9 Jul 2022 11:19:59 +0200
+Subject: [PATCH] Fix pre-commit config post moving compiler
+
+---
+ .pre-commit-config.yaml | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index dce98218c1..eb7ae415d7 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -5,14 +5,14 @@ repos:
+   - id: trailing-whitespace
+     exclude: >
+       (?x)^(
+-        ^test/runnable/extra-files/.*$|
+-        ^test/compilable/extra-files/.*$|
++        ^compiler/test/runnable/extra-files/.*$|
++        ^compiler/test/compilable/extra-files/.*$|
+       )$
+   - id: end-of-file-fixer
+     exclude: >
+       (?x)^(
+-        ^test/runnable/extra-files/.*$|
+-        ^test/compilable/extra-files/.*$|
++        ^compiler/test/runnable/extra-files/.*$|
++        ^compiler/test/compilable/extra-files/.*$|
+       )$
+   - id: check-merge-conflict
+   - id: check-added-large-files
+-- 
+2.34.1
+

@@ -38,7 +38,9 @@ then
     ##
     # Move dmd files into subdirectory before any $workdir merging. 
     mkdir $workdir/dmd/compiler
-    git -C $workdir/dmd mv {changelog,ci,docs,ini,samples,src,test} compiler/
+    git -C $workdir/dmd mv {changelog,docs,ini,samples,src,test} compiler/
+    patch -d $workdir/dmd -p1 -i ../../patches/move_compiler/0001-Fix-pre-commit-config-post-moving-compiler.patch
+    git -C $workdir/dmd add .pre-commit-config.yaml
     git -C $workdir/dmd commit -m 'Move dmd files into compiler/'
 
     ##
