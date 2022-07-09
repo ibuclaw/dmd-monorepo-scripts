@@ -1,0 +1,27 @@
+From 42d0f8f386781400cf29d4ac25606d25efe98324 Mon Sep 17 00:00:00 2001
+From: Vladimir Panteleev <git@cy.md>
+Date: Sat, 9 Jul 2022 14:22:26 +0000
+Subject: [PATCH 3/3] posix.mak: Disable parallel GC in DPL_DOCS
+
+Can crash with segmentation fault when built with current
+STABLE_DMD_VER.
+---
+ posix.mak | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/posix.mak b/posix.mak
+index a3b6ca50..8831d3fe 100644
+--- a/posix.mak
++++ b/posix.mak
+@@ -166,7 +166,7 @@ DOC_OUTPUT_DIR:=$(PWD)/web
+ W:=$(DOC_OUTPUT_DIR)
+ GIT_HOME=https://github.com/dlang
+ DPL_DOCS_PATH=dpl-docs
+-DPL_DOCS=$(DPL_DOCS_PATH)/dpl-docs
++DPL_DOCS=$(DPL_DOCS_PATH)/dpl-docs --DRT-gcopt=parallel:0
+ REMOTE_DIR=d-programming@digitalmars.com:data
+ TMP?=/tmp
+ GENERATED=.generated
+-- 
+2.36.1
+

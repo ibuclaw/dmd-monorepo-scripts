@@ -1,0 +1,47 @@
+From e2021cbc26dcd1bc19cef58b0a609c4731b61079 Mon Sep 17 00:00:00 2001
+From: Vladimir Panteleev <git@cy.md>
+Date: Sat, 9 Jul 2022 14:00:17 +0000
+Subject: [PATCH 6/6] dub.sdl: Add explicit importPaths
+
+---
+ dub.sdl | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/dub.sdl b/dub.sdl
+index af0c561f6c..ef4dbef3ba 100644
+--- a/dub.sdl
++++ b/dub.sdl
+@@ -10,12 +10,14 @@ dependency ":frontend" version="*"
+ subPackage {
+   name "root"
+   targetType "library"
++  importPaths "compiler/src"
+   sourcePaths "compiler/src/dmd/common" "compiler/src/dmd/root"
+ }
+ 
+ subPackage {
+   name "lexer"
+   targetType "library"
++  importPaths "compiler/src"
+   sourcePaths
+ 
+   sourceFiles \
+@@ -56,6 +58,7 @@ subPackage {
+ subPackage {
+   name "parser"
+   targetType "library"
++  importPaths "compiler/src"
+   sourcePaths
+ 
+   sourceFiles \
+@@ -73,6 +76,7 @@ subPackage {
+ subPackage {
+   name "frontend"
+   targetType "library"
++  importPaths "compiler/src"
+   sourcePaths "compiler/src/dmd"
+   stringImportPaths "compiler/src/dmd/res"
+ 
+-- 
+2.36.1
+
