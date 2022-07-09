@@ -7,7 +7,7 @@ if [ "$1" = "subtree" ];
 then
     ##
     # Setup work directory (yes we are cloning everything).
-    for repo in dmd druntime phobos tools installer dlang.org; do
+    for repo in dmd druntime phobos tools installer dlang.org ci; do
 	git clone https://github.com/dlang/$repo $workdir/$repo
     done
 
@@ -51,7 +51,7 @@ then
     git -C $workdir/dlang.org am ../../patches/dlang.org/0002-posix.mak-Update-docs-paths-for-DMD-Druntime-monorep.patch
     git -C $workdir/dlang.org am ../../patches/dlang.org/0003-posix.mak-Disable-parallel-GC-in-DPL_DOCS.patch
 
-    git -C $workdir/dlang.org am ../../patches/ci/0001-Fix-build-script-paths-to-work-with-new-merged-repos.patch
+    git -C $workdir/ci am ../../patches/ci/0001-Fix-build-script-paths-to-work-with-new-merged-repos.patch
 
     ##
     # This is the first revision with a working merged structure!
