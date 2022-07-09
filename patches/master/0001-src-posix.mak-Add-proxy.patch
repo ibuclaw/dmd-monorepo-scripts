@@ -1,0 +1,57 @@
+From 2fad47e0323b8aed6c0361ca0be390ee3444bbd8 Mon Sep 17 00:00:00 2001
+From: Vladimir Panteleev <git@cy.md>
+Date: Sat, 9 Jul 2022 12:35:47 +0000
+Subject: [PATCH 1/6] src/posix.mak: Add proxy
+
+---
+ src/posix.mak | 38 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
+ create mode 100644 src/posix.mak
+
+diff --git a/src/posix.mak b/src/posix.mak
+new file mode 100644
+index 0000000000..cba918dd62
+--- /dev/null
++++ b/src/posix.mak
+@@ -0,0 +1,38 @@
++# Proxy Makefile for backwards compatibility after move to /compiler/src
++
++
++all:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++auto-tester-build:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++auto-tester-test:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++buildkite-test:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++toolchain-info:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++clean:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++test:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++html:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++tags:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++install:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++check-clean-git:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
++
++style:
++	$(MAKE) -C ../compiler/src -f posix.mak $@
+-- 
+2.36.1
+

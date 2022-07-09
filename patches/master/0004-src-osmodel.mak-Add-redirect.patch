@@ -1,0 +1,20 @@
+From 0a1ed935519f5dda8acf2a1b04fc6552fa7e8d75 Mon Sep 17 00:00:00 2001
+From: Vladimir Panteleev <git@cy.md>
+Date: Sat, 9 Jul 2022 13:00:50 +0000
+Subject: [PATCH 4/6] src/osmodel.mak: Add redirect
+
+---
+ src/osmodel.mak | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 src/osmodel.mak
+
+diff --git a/src/osmodel.mak b/src/osmodel.mak
+new file mode 100644
+index 0000000000..a0247f7f1e
+--- /dev/null
++++ b/src/osmodel.mak
+@@ -0,0 +1 @@
++include $(dir $(lastword $(MAKEFILE_LIST)))../compiler/src/osmodel.mak
+-- 
+2.36.1
+
