@@ -11,7 +11,7 @@ Subject: [PATCH] Fix build script paths to work with new merged dmd-druntime
  3 files changed, 7 insertions(+), 7 deletions(-)
 
 diff --git a/posix.mak b/posix.mak
-index 023e810b2..aa2b729e9 100644
+index 21a6064dd..7314744cd 100644
 --- a/posix.mak
 +++ b/posix.mak
 @@ -34,7 +34,7 @@ DEBUGGER=gdb
@@ -45,17 +45,8 @@ index 023e810b2..aa2b729e9 100644
  endif
  
  # Set CC and DMD
-@@ -485,7 +485,7 @@ else
- # to always invoke druntime's make. Use FORCE instead of .PHONY to
- # avoid rebuilding phobos when $(DRUNTIME) didn't change.
- $(DRUNTIME): FORCE
--	$(MAKE) -C $(DRUNTIME_PATH) -f posix.mak MODEL=$(MODEL) DMD=$(DMD) OS=$(OS) BUILD=$(BUILD)
-+	$(MAKE) -C $(DRUNTIME_PATH) -f posix.mak MODEL=$(MODEL) DMD=$(abspath $(DMD)) OS=$(OS) BUILD=$(BUILD)
- 
- ifeq (,$(findstring win,$(OS)))
- $(DRUNTIMESO): $(DRUNTIME)
 diff --git a/win32.mak b/win32.mak
-index e3840e60a..d4f384395 100644
+index 76d1f80fd..b77fb3601 100644
 --- a/win32.mak
 +++ b/win32.mak
 @@ -38,7 +38,7 @@ CFLAGS=-mn -6 -r
@@ -68,7 +59,7 @@ index e3840e60a..d4f384395 100644
  
  ## Flags for dmd D compiler
 diff --git a/win64.mak b/win64.mak
-index 34633d055..983ec325c 100644
+index 3ab259f3e..6564b7642 100644
 --- a/win64.mak
 +++ b/win64.mak
 @@ -35,7 +35,7 @@ CFLAGS=/O2 /nologo
